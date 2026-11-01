@@ -89,3 +89,10 @@ test('a Manual Switch is kept on the newest message, so deleting that message un
     assert.equal((await me.api(`/chats/${chatId}/messages/${last.seq}`, 'DELETE')).status, 200);
     assert.doesNotMatch(await prompt(chatId), /## The Secret/);
 });
+
+test('switching on a card with no Fields yet imports them from the Description, one per heading', async () => {
+    const { id, chatId } = await kael(null, 'Intro line.\n\n## Appearance\nTall, scarred.\n\n## Personality\nGruff but kind.');
+    await evolutia(`/characters/${id}/on`, 'PUT', { on: true });
+    const text = await prompt(chatId);
+    assert.match(text, /## Overview\nIntro line\.\n\n## Appearance\nTall, scarred\.\n\n## Personality\nGruff but kind\./);
+});

@@ -1,6 +1,7 @@
 // Evolutia, the server half: Field Definitions on the card, {{evolutia}} in place of the Description,
 // and Field State worked out from the chat's messages each time a prompt is built (ADR 0004).
 import { deriveTimeline, promptFor } from '../core/evolve.js';
+import { definitionFromDescription } from '../core/definition.js';
 
 const MACRO = '{{evolutia}}';
 
@@ -85,8 +86,12 @@ export function register(router, ctx) {
         const ev = c.card.data.extensions?.evolutia || {};
         const on = !!req.body?.on;
         if (on === !!ev.on) return res.json({ on });
+        const description = c.card.data.description ?? '';
         const fields = on
-            ? { description: MACRO, 'extensions.evolutia.on': true, 'extensions.evolutia.originalDescription': c.card.data.description ?? '' }
+            ? {
+                description: MACRO, 'extensions.evolutia.on': true, 'extensions.evolutia.originalDescription': description,
+                ...(ev.definition ? {} : { 'extensions.evolutia.definition': definitionFromDescription(description) }),
+            }
             : { description: ev.originalDescription ?? '', 'extensions.evolutia.on': false, 'extensions.evolutia.originalDescription': null };
         chars.patchCharacter(req.db, req.params.id, { fields });
         return res.json({ on });
