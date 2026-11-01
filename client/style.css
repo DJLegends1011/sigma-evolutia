@@ -1,136 +1,530 @@
-/* Evolutia: layout only; materials and controls are the app's own tokens. */
+/* Aspect: Evolutia — Glassmorphic Project Σ Styling */
 
-.evo-editor, .evo-panel { display: flex; flex-direction: column; gap: var(--space-sm); }
-.evo-muted, .evo-hint { color: var(--text-muted); font-size: var(--font-xs); }
-.evo-error { color: var(--cl-danger, var(--cl-warning)); }
-.evo-label { color: var(--text-secondary); font-size: var(--font-xs); font-weight: 600; }
-.evo-sub { margin-top: var(--space-2xs); font-weight: 500; }
-.evo-head { display: flex; flex-direction: column; gap: var(--space-2xs); }
-.evo-switch, .evo-editor label:has(> .cl-switch-input), .evo-panel label:has(> .cl-switch-input), .evo-picker label:has(> .cl-switch-input) {
-    display: inline-flex; align-items: center; gap: var(--space-xs); cursor: pointer; position: relative;
+.evo-window, .evo-editor, .evo-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 4px 2px 12px;
+    color: var(--text-primary, #f2f4f8);
+    font-size: 0.88rem;
 }
-.evo-row, .evo-trigger, .evo-action { display: flex; flex-direction: column; gap: var(--space-2xs); }
-.evo-trigger-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-xs); }
-.evo-mode { max-width: 10rem; }
-.evo-keywords { min-height: 2.2rem; }
-.evo-num { max-width: 6rem; }
-.evo-reads { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-sm); font-size: var(--font-sm); }
-.evo-reads label { display: inline-flex; align-items: center; gap: var(--space-2xs); }
-.evo-buttons { display: flex; flex-wrap: wrap; gap: var(--space-xs); }
-.evo-danger { color: var(--cl-danger, var(--cl-warning)); }
-.evo-section { margin: var(--space-sm) 0 0; font-size: var(--font-sm); }
 
-/* Chat window tabs (Live State / Character / Persona) */
+.evo-window label:has(> .cl-switch-input),
+.evo-editor label:has(> .cl-switch-input),
+.evo-panel label:has(> .cl-switch-input),
+.evo-picker label:has(> .cl-switch-input),
+.evo-switch,
+.evo-switch-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+    position: relative;
+    user-select: none;
+    line-height: 1.3;
+}
+
+.evo-window .cl-switch,
+.evo-editor .cl-switch,
+.evo-picker .cl-switch {
+    display: inline-block;
+    flex-shrink: 0;
+}
+
+.evo-muted, .evo-hint {
+    color: var(--text-secondary, #9aa4bf);
+    font-size: 0.78rem;
+    line-height: 1.4;
+}
+
+.evo-error {
+    color: var(--cl-danger, #f87171);
+}
+
 .evo-tabs {
-    display: flex; gap: var(--space-2xs); padding: 4px; margin-bottom: var(--space-sm);
-    background: var(--cl-ghost-faint, rgba(255, 255, 255, 0.03));
-    border: 1px solid var(--cl-ghost-mid, rgba(255, 255, 255, 0.08));
-    border-radius: var(--radius-md, 10px);
+    display: flex;
+    gap: 6px;
+    padding: 4px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
+    border-radius: 10px;
 }
+
 .evo-tab-btn {
-    flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 6px;
-    padding: 6px 10px; border-radius: var(--radius-sm, 7px); border: 1px solid transparent;
-    background: transparent; color: var(--text-secondary); font-size: var(--font-xs); font-weight: 600;
-    cursor: pointer; transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+    flex: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 7px 10px;
+    border-radius: 7px;
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--text-secondary, #a5adcb);
+    font-size: 0.82rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
 }
-.evo-tab-btn:hover { color: var(--text-primary); background: var(--cl-ghost-mid); }
+
+.evo-tab-btn:hover {
+    color: var(--text-primary, #f2f4f8);
+    background: rgba(255, 255, 255, 0.05);
+}
+
 .evo-tab-btn.is-active {
-    color: var(--text-primary); background: var(--cl-accent-tint); border-color: var(--cl-accent-tint-border);
+    color: var(--text-primary, #fff);
+    background: rgba(255, 255, 255, 0.09);
+    border-color: var(--border-strong, rgba(255, 255, 255, 0.16));
 }
 
-.evo-save { display: flex; align-items: center; gap: var(--space-xs); padding: var(--space-xs);
-    border-radius: var(--radius-md); background: var(--cl-ghost-faint); border: 1px solid transparent; }
-.evo-save .evo-hint { flex: 1; }
-.evo-save.is-dirty { background: var(--cl-accent-tint); border-color: var(--cl-accent-tint-border); }
+.evo-card {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 12px;
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.025);
+    border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
+}
 
-.evo-egos { display: flex; flex-wrap: wrap; gap: var(--space-2xs); }
-.evo-chip { display: inline-flex; align-items: center; gap: var(--space-2xs); padding: var(--space-2xs) var(--space-sm);
-    border-radius: var(--radius-pill); border: 1px solid var(--cl-ghost-mid); background: var(--cl-ghost-faint);
-    color: var(--text-secondary); font-size: var(--font-xs); cursor: pointer; }
-.evo-chip.is-on { background: var(--cl-accent-tint); border-color: var(--cl-accent-tint-border); color: var(--text-primary); }
+.evo-ego-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
 
-.evo-field, .evo-ego { border: 1px solid var(--cl-ghost-mid); border-radius: var(--radius-md); background: var(--cl-ghost-faint); }
-.evo-field > summary, .evo-ego > summary { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-xs);
-    padding: var(--space-xs) var(--space-sm); cursor: pointer; font-size: var(--font-sm); }
-.evo-field-name { font-weight: 600; color: var(--text-primary); }
-.evo-pills { display: inline-flex; flex-wrap: wrap; gap: 4px; margin-left: auto; }
-.evo-field-body { display: flex; flex-direction: column; gap: var(--space-sm); padding: 0 var(--space-sm) var(--space-sm); }
+.evo-ego-avatar-preview {
+    width: 48px;
+    height: 48px;
+    border-radius: 10px;
+    object-fit: cover;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.14));
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+}
 
-.evo-pill { font-size: var(--font-xs); padding: 0 var(--space-xs); border-radius: var(--radius-pill);
-    background: var(--cl-ghost-mid); color: var(--text-secondary); }
-.evo-pill.evo-on { background: var(--cl-accent-tint); color: var(--text-primary); }
-.evo-pill.evo-entering, .evo-pill.evo-exiting { border: 1px dashed var(--cl-accent-tint-border); color: var(--text-primary); }
-.evo-pill.evo-token-pill { opacity: 0.85; font-variant-numeric: tabular-nums; }
+.evo-ego-avatar-preview img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.evo-ego-select-col {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 160px;
+}
+
+.evo-label {
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-secondary, #9aa4bf);
+}
+
+.evo-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.evo-row-between {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.evo-btn-row, .evo-buttons {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.evo-btn-accent {
+    border-color: var(--cl-accent-tint-border, rgba(56, 189, 248, 0.45)) !important;
+    background: var(--cl-accent-tint, rgba(56, 189, 248, 0.14)) !important;
+}
+
+.evo-danger {
+    color: var(--cl-danger, #f87171);
+}
+
+.evo-fields-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.evo-field-card {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 10px 12px;
+    border-radius: 9px;
+    background: rgba(0, 0, 0, 0.22);
+    border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
+    transition: opacity 0.15s ease, border-color 0.15s ease;
+}
+
+.evo-field-card.is-disabled {
+    opacity: 0.58;
+}
+
+.evo-field-head {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.evo-field-name-input {
+    flex: 1;
+    min-width: 130px;
+    font-weight: 600;
+}
+
+.evo-token-pill {
+    font-size: 0.72rem;
+    padding: 2px 7px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--text-secondary, #9aa4bf);
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+}
+
+.evo-pills {
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-left: 6px;
+}
+
+.evo-pill {
+    font-size: 0.7rem;
+    padding: 1px 7px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.07);
+    color: var(--text-secondary, #9aa4bf);
+}
+
+.evo-pill.evo-on {
+    background: var(--cl-accent-tint, rgba(56, 189, 248, 0.15));
+    color: var(--text-primary, #fff);
+}
+
+.evo-pill.evo-entering, .evo-pill.evo-exiting {
+    border: 1px dashed var(--cl-accent-tint-border, rgba(56, 189, 248, 0.45));
+    color: var(--text-primary, #fff);
+}
+
 .evo-pill.is-disguise {
-    background: rgba(139, 92, 246, 0.16); border: 1px solid rgba(139, 92, 246, 0.36); color: #ddd6fe;
+    background: rgba(139, 92, 246, 0.16);
+    border: 1px solid rgba(139, 92, 246, 0.36);
+    color: #ddd6fe;
 }
 
-.evo-avatar-row { display: flex; align-items: center; gap: var(--space-sm); flex-wrap: wrap; }
-.evo-avatar { width: 48px; height: 48px; border-radius: 50%; object-fit: cover; flex: none; }
-.evo-avatar-own { display: inline-flex; align-items: center; justify-content: center; background: var(--cl-ghost-mid); color: var(--text-muted); }
-.evo-upload { cursor: pointer; }
-.evo-gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(64px, 1fr)); gap: var(--space-2xs); max-height: 220px; overflow-y: auto; padding: 2px; }
-.evo-gallery-pick { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 2px; border: 2px solid transparent; border-radius: var(--radius-sm); background: none; cursor: pointer; }
-.evo-gallery-pick img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: var(--radius-sm); }
-.evo-gallery-caption { font-size: 0.65rem; color: var(--text-muted); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.evo-gallery-pick.is-on { border-color: var(--cl-accent-tint-border); }
+.evo-details {
+    border-top: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.06));
+    padding-top: 6px;
+}
 
-.evo-now { display: flex; align-items: baseline; flex-wrap: wrap; gap: var(--space-xs); }
-.evo-panel-ego { display: flex; flex-direction: column; gap: var(--space-2xs); padding: var(--space-xs);
-    border-radius: var(--radius-md); border: 1px solid var(--cl-ghost-mid); }
-.evo-panel-ego.is-active { border-color: var(--cl-accent-tint-border); background: var(--cl-accent-tint); }
-.evo-panel-ego-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-xs); font-weight: 600; font-size: var(--font-sm); }
-.evo-panel-ego-title { display: inline-flex; align-items: center; gap: var(--space-xs); min-width: 0; }
-.evo-panel-ego-thumb { width: 24px; height: 24px; border-radius: 50%; object-fit: cover; flex-shrink: 0; }
-.evo-panel-field { display: flex; align-items: center; gap: var(--space-xs); font-size: var(--font-sm); }
-.evo-panel-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.evo-in { color: var(--text-primary); }
-.evo-small { padding: var(--space-2xs) var(--space-xs); font-size: var(--font-xs); }
-.evo-preview > summary { cursor: pointer; font-size: var(--font-sm); }
-.evo-preview pre { white-space: pre-wrap; font-size: var(--font-xs); background: var(--cl-ghost-faint);
-    padding: var(--space-xs); border-radius: var(--radius-sm); margin: var(--space-2xs) 0 var(--space-sm); }
-.evo-picker { display: flex; flex-direction: column; gap: var(--space-sm); padding: var(--space-sm); }
+.evo-details summary {
+    font-size: 0.78rem;
+    color: var(--text-secondary, #9aa4bf);
+    cursor: pointer;
+    user-select: none;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.evo-details-body {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 8px;
+}
+
+.evo-reads {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+    font-size: 0.8rem;
+}
+
+.evo-reads label {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    cursor: pointer;
+}
+
+.evo-save {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 10px;
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid transparent;
+}
+
+.evo-save .evo-hint {
+    flex: 1;
+}
+
+.evo-save.is-dirty {
+    background: var(--cl-accent-tint, rgba(56, 189, 248, 0.1));
+    border-color: var(--cl-accent-tint-border, rgba(56, 189, 248, 0.3));
+}
+
+.evo-upload {
+    cursor: pointer;
+}
+
+.evo-gallery {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(64px, 1fr));
+    gap: 6px;
+    max-height: 220px;
+    overflow-y: auto;
+    padding: 2px;
+}
+
+.evo-gallery-pick {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    padding: 2px;
+    border: 2px solid transparent;
+    border-radius: 7px;
+    background: none;
+    cursor: pointer;
+}
+
+.evo-gallery-pick img {
+    width: 100%;
+    aspect-ratio: 1;
+    object-fit: cover;
+    border-radius: 6px;
+}
+
+.evo-gallery-caption {
+    font-size: 0.65rem;
+    color: var(--text-secondary, #9aa4bf);
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.evo-gallery-pick.is-on {
+    border-color: var(--cl-accent-tint-border, #38bdf8);
+}
+
+.evo-panel-ego {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 10px;
+    border-radius: 8px;
+    background: rgba(0, 0, 0, 0.18);
+    border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.07));
+}
+
+.evo-panel-ego.is-active {
+    border-color: var(--cl-accent-tint-border, rgba(56, 189, 248, 0.35));
+    background: var(--cl-accent-tint, rgba(56, 189, 248, 0.08));
+}
+
+.evo-panel-ego-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    font-weight: 600;
+    font-size: 0.84rem;
+}
+
+.evo-panel-ego-title {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+}
+
+.evo-panel-ego-thumb {
+    width: 26px;
+    height: 26px;
+    border-radius: 6px;
+    object-fit: cover;
+    flex-shrink: 0;
+}
+
+.evo-panel-field {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.82rem;
+}
+
+.evo-panel-name {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.evo-in {
+    color: var(--text-primary, #fff);
+}
+
+.evo-code-preview {
+    white-space: pre-wrap;
+    font-size: 0.76rem;
+    background: rgba(0, 0, 0, 0.25);
+    border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.07));
+    padding: 8px 10px;
+    border-radius: 8px;
+    margin: 2px 0 6px;
+    max-height: 220px;
+    overflow-y: auto;
+}
+
+.evo-picker {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 8px;
+}
 
 /* Visual Quick Switcher Grid */
 .evo-quick-ego-grid {
-    display: grid; grid-template-columns: repeat(auto-fill, minmax(155px, 1fr)); gap: var(--space-xs);
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(155px, 1fr));
+    gap: 8px;
 }
+
 .evo-quick-ego-btn {
-    display: flex; align-items: center; justify-content: flex-start; gap: 10px;
-    padding: 8px 10px; border-radius: var(--radius-md); text-align: left; height: auto;
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 10px;
+    padding: 8px 10px;
+    border-radius: 9px;
+    border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.1));
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--text-primary, #f2f4f8);
+    cursor: pointer;
+    text-align: left;
+    height: auto;
+    transition: background 0.15s ease, border-color 0.15s ease;
 }
+
+.evo-quick-ego-btn:hover {
+    background: rgba(255, 255, 255, 0.08);
+}
+
 .evo-quick-ego-btn.is-active {
-    border-color: var(--cl-accent-tint-border); background: var(--cl-accent-tint);
+    border-color: var(--accent-primary, #38bdf8);
+    background: rgba(56, 189, 248, 0.12);
 }
+
 .evo-quick-ego-btn img, .evo-quick-ego-icon {
-    width: 34px; height: 34px; border-radius: 8px; object-fit: cover; flex-shrink: 0;
-    display: inline-flex; align-items: center; justify-content: center; background: var(--cl-ghost-mid);
+    width: 34px;
+    height: 34px;
+    border-radius: 7px;
+    object-fit: cover;
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(255, 255, 255, 0.06);
 }
-.evo-quick-ego-meta { display: flex; flex-direction: column; min-width: 0; }
-.evo-quick-ego-name { font-weight: 600; font-size: var(--font-sm); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.evo-quick-ego-sub { font-size: var(--font-xs); color: var(--text-muted); }
+
+.evo-quick-ego-meta {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.evo-quick-ego-name {
+    font-weight: 600;
+    font-size: 0.84rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.evo-quick-ego-sub {
+    font-size: 0.72rem;
+    color: var(--text-secondary, #9aa4bf);
+}
 
 /* Message Header Badges */
 .evo-msg-badge {
-    display: inline-flex; align-items: center; gap: 4px; margin-left: 6px; padding: 1px 7px;
-    border-radius: 999px; font-size: 0.7rem; font-weight: 600;
-    background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.14);
-    color: var(--text-secondary); vertical-align: middle;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin-left: 6px;
+    padding: 1px 7px;
+    border-radius: 999px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    color: var(--text-secondary, #c5cee0);
+    vertical-align: middle;
 }
+
 .evo-msg-badge.is-disguise {
-    background: rgba(139, 92, 246, 0.16); border-color: rgba(139, 92, 246, 0.36); color: #ddd6fe;
+    background: rgba(139, 92, 246, 0.16);
+    border-color: rgba(139, 92, 246, 0.36);
+    color: #ddd6fe;
 }
 
-/* Long text: compact boxes with an expand button to a full-screen editor, as the Edit tab does it. A compact box
-   never scrolls inside, so a swipe that starts on it scrolls the details (long text is read and edited expanded).
-   Keyword lists are short: they grow to their text and never scroll inside either. */
-.evo-editor textarea.evo-long { overflow: hidden; resize: none; touch-action: pan-y; }
-.evo-editor textarea.evo-keywords { field-sizing: content; overflow: hidden; resize: none; min-height: 2.6rem; }
-.evo-label-row { display: flex; align-items: center; justify-content: space-between; gap: var(--space-xs); }
-.evo-expand { border: none; background: none; color: var(--text-muted); cursor: pointer; padding: var(--space-2xs); }
-.evo-expand:hover { color: var(--text-primary); }
-.evo-big { flex: 1; }
-.evo-big-buttons { justify-content: flex-end; margin-top: var(--space-sm); }
+.evo-expand {
+    border: none;
+    background: none;
+    color: var(--text-secondary, #9aa4bf);
+    cursor: pointer;
+    padding: 2px 4px;
+}
 
-/* the Persona Side: its editor in a dialog, and its block in Settings › Chat */
-.evo-dialog-body { padding: var(--space-md); overflow-y: auto; }
+.evo-expand:hover {
+    color: var(--text-primary, #fff);
+}
+
+.evo-big {
+    flex: 1;
+}
+
+.evo-big-buttons {
+    justify-content: flex-end;
+    margin-top: 8px;
+}
+
+.evo-num {
+    max-width: 6rem;
+}
+
+.evo-dialog-body {
+    padding: 12px;
+    overflow-y: auto;
+}

@@ -30,17 +30,50 @@ export function idFor(name, taken) {
     return id;
 }
 
-// One Field per Markdown heading; text before the first heading is the Overview, a Description with no
-// headings one Field. Every Field starts on, so the prompt reads as it did before.
+// One Field per Markdown heading; if the text has no Markdown headings, looks for labeled sections
+// (Background:, Personality:, Appearance:, Outfit:, etc.) or falls back to one Description Field.
 export function definitionFromDescription(description) {
+    const text = String(description ?? '');
     const sections = [];
     let current = { name: 'Overview', lines: [] };
-    for (const line of String(description ?? '').split('\n')) {
+    for (const line of text.split('\n')) {
         const heading = line.match(/^#{1,6}\s+(.+?)\s*#*\s*$/);
         if (heading) { sections.push(current); current = { name: heading[1], lines: [] }; }
         else current.lines.push(line);
     }
     sections.push(current);
+
+    if (sections.length === 1 && text.trim()) {
+        const sectionRegex = /^(?:\*{1,2})?(Background|Backstory|History|Bio|Identity|Personality|Traits|Behavior|Appearance|Body|Looks|Physical|Outfit|Attire|Clothing|Costume|Powers|Abilities|Relationships|Secrets|Intimate)(?:\*{1,2})?\s*(?:[:\-—]|\()/gim;
+        const matches = [...text.matchAll(sectionRegex)];
+        if (matches.length >= 2) {
+            const labeled = [];
+            const pre = text.slice(0, matches[0].index).trim();
+            if (pre) labeled.push({ name: 'Background', content: pre });
+            for (let i = 0; i < matches.length; i++) {
+                const rawLabel = matches[i][1];
+                const isParen = matches[i][0].endsWith('(');
+                const start = isParen ? matches[i].index : (matches[i].index + matches[i][0].length);
+                const end = i + 1 < matches.length ? matches[i + 1].index : text.length;
+                const chunk = text.slice(start, end).trim();
+                if (!chunk) continue;
+                const lower = rawLabel.toLowerCase();
+                const normName = ['background', 'backstory', 'history', 'bio', 'identity'].includes(lower) ? 'Background'
+                    : ['personality', 'traits', 'behavior'].includes(lower) ? 'Personality'
+                    : ['appearance', 'body', 'looks', 'physical', 'outfit', 'attire', 'clothing'].includes(lower) ? 'Appearance'
+                    : rawLabel.charAt(0).toUpperCase() + rawLabel.slice(1);
+                const existing = labeled.find(s => s.name === normName);
+                if (existing) existing.content = `${existing.content}\n\n${chunk}`;
+                else labeled.push({ name: normName, content: chunk });
+            }
+            if (labeled.length >= 2) {
+                const taken = new Set();
+                const fields = labeled.map(s => blankField(idFor(s.name, taken), s.name, s.content));
+                return { alterEgos: [blankAlterEgo('main', 'Main', fields)] };
+            }
+        }
+    }
+
     const taken = new Set();
     const fields = sections
         .map(s => ({ name: s.name, content: s.lines.join('\n').trim() }))
