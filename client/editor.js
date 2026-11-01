@@ -329,7 +329,11 @@ export function mountEditor(pane, character, ctx) {
             CoreAPI.showToast(want ? 'Evolutia is on: the Description is now {{evolutia}}' : 'Evolutia is off: the Description is back', 'success');
             await load();
             // the details paint the Description only when the card opens: open it again so they show the new one
-            if (fields) await ctx.commands.run('character.open', { id: charId });
+            if (fields) {
+                await ctx.commands.run('character.open', { id: charId });
+                // opening lands on Details: step back to this tab (no door for it; absent markup leaves Details)
+                document.querySelector('.tab-btn[data-ext-tab="evolutia/evolutia"]')?.click();
+            }
         } catch (e) { CoreAPI.showToast(`Could not switch Evolutia: ${e.message}`, 'error'); render(); }
     }
 
