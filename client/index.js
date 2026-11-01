@@ -54,37 +54,47 @@ export default {
         ctx.events.on('character.updated', () => { if (view?.isOpen()) view.reloadSoon(); });
         ctx.events.on('persona.changed', () => { if (view?.isOpen()) view.reloadSoon(); });
 
-        // Switch Alter Ego: a Manual Switch at the newest message
+        // Switch Alter Ego: a Manual Switch at the newest message, for the character's side or the user's (Persona Side)
         const picker = ctx.ui.dialog({ id: 'switch-ego', label: 'Switch Alter Ego', icon: 'fa-masks-theater' });
+        const egoButtons = (st, side) => st.egos.map(e => {
+            const active = e.id === st.ego.id, coming = e.id === st.egoMove?.id;
+            return `<button type="button" class="cl-btn ${active ? '' : 'cl-btn-secondary'}" data-ego="${esc(e.id)}" data-side="${side}" ${active || coming ? 'disabled' : ''}>
+                ${esc(e.name)}${active ? ' (active)' : coming ? ' (changing)' : ''}</button>`;
+        }).join('');
         ctx.ui.addAction('chat', {
             id: 'switch-ego',
             label: 'Switch Alter Ego',
             icon: 'fa-masks-theater',
-            when: ({ character }) => !!character,
             async run({ chatId, character }) {
                 let state;
-                try { state = await ctx.server.call(`/chats/${encodeURIComponent(chatId)}/state?charId=${encodeURIComponent(character.id)}`); } catch (e) {
+                try { state = await ctx.server.call(`/chats/${encodeURIComponent(chatId)}/state${character ? `?charId=${encodeURIComponent(character.id)}` : ''}`); } catch (e) {
                     CoreAPI.showToast(`Could not read Evolutia's state: ${e.message}`, 'error');
                     return;
                 }
-                if (!state.on) { CoreAPI.showToast(`Evolutia is off for ${character.name}`, 'info'); return; }
-                const body = picker.open({ title: `Switch ${character.name}'s Alter Ego` });
+                const charSide = state.on && state.egos.length > 1;
+                const youSide = state.persona && state.persona.egos.length > 1;
+                if (!charSide && !youSide) { CoreAPI.showToast('Nothing to switch: neither this character nor your persona has more than one Alter Ego', 'info'); return; }
+                const body = picker.open({ title: 'Switch Alter Ego' });
                 body.innerHTML = `
                     <div class="evo-picker">
-                        ${state.egos.map(e => `<button type="button" class="cl-btn ${e.id === state.ego.id ? '' : 'cl-btn-secondary'}" data-ego="${esc(e.id)}" ${e.id === state.ego.id ? 'disabled' : ''}>
-                            ${esc(e.name)}${e.id === state.ego.id ? ' (active)' : ''}</button>`).join('')}
+                        ${charSide ? `<span class="evo-label">${esc(character?.name || 'Character')}</span>${egoButtons(state, 'char')}` : ''}
+                        ${youSide ? `<span class="evo-label">You (${esc(state.persona.name)})</span>${egoButtons(state.persona, 'persona')}` : ''}
                         <label class="evo-switch"><input type="checkbox" class="cl-switch-input" data-skip><span class="cl-switch" aria-hidden="true"></span><span>Skip the Actions</span></label>
                     </div>`;
-                body.addEventListener('click', async (e) => {
+                // one handler per open: the dialog's body is reused
+                body.onclick = async (e) => {
                     const b = e.target.closest('button[data-ego]');
                     if (!b) return;
                     try {
-                        await ctx.server.call(`/chats/${encodeURIComponent(chatId)}/switch`, 'POST', { kind: 'ego', id: b.dataset.ego, skip: body.querySelector('[data-skip]').checked });
+                        await ctx.server.call(`/chats/${encodeURIComponent(chatId)}/switch`, 'POST', {
+                            kind: 'ego', id: b.dataset.ego, skip: body.querySelector('[data-skip]').checked,
+                            ...(b.dataset.side === 'persona' ? { side: 'persona' } : {}),
+                        });
                         await picker.close();
                         identity.refreshSoon();
                         if (view?.isOpen()) view.reloadSoon();
                     } catch (err) { CoreAPI.showToast(`Could not switch: ${err.message}`, 'error'); }
-                });
+                };
             },
         });
 
