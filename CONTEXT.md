@@ -9,7 +9,7 @@ A named, ordered piece of a character's definition (e.g. "Appearance", "Werewolf
 _Avoid_: Dynamic Field, aspect, section, chunk
 
 **Field Definition**:
-A Field as authored on the character card: its name, content, order, and Triggers. Shared by every chat with that card.
+A Field as authored on a character card or a persona: its name, content, order, and Triggers. Shared by every chat with that card or persona.
 _Avoid_: field config, template
 
 **Field State**:
@@ -69,13 +69,17 @@ The user turning a Field or Alter Ego on or off from the chat; it counts as a Tr
 The name an Alter Ego gives the character in the prompt, in place of the card's name.
 
 **Display Identity**:
-The name and avatar an Alter Ego shows on the messages written while it was active. The reply that carries a change to another Alter Ego still shows the old one. The card's own name and avatar are never changed.
+The name and avatar an Alter Ego shows on the messages written while it was active (the character's replies for a card's Alter Ego, the user's messages for a persona's). The reply that carries a change to another Alter Ego still shows the old one. The card's own name and avatar are never changed.
 
 **Legacy Data**:
 Evolutia data from the SillyTavern original, found on imported cards under `st-description-swap-fields`, which Evolutia can convert.
 
 **Original Description**:
-The card's Description text from before Evolutia was turned on, kept so that turning Evolutia off restores it.
+The card's (or persona's) description from before Evolutia was turned on, kept so that turning Evolutia off restores it.
+
+**Persona Side**:
+Evolutia on the user's persona: the same Fields, Triggers, Actions and Alter Egos, describing {{user}} instead of the character. A chat uses the Persona Side of its effective persona (the chat's own, else the account's active one), worked out over the whole history even after a switch. A persona's Entry and Exit Actions are asked of the character's next reply, which narrates them.
+_Avoid_: user fields, player fields
 
 **Branch**:
 A chat created from another chat at a message. It inherits the parent's Field State and active Alter Ego as of that message.
