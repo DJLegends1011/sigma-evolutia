@@ -1,0 +1,565 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>PROTOTYPE · Evolutia state model</title>
+<style>
+  :root { --accent:#7c5cff; --bg:#fafafa; --card:#fff; --ink:#1d1d24; --muted:#6b6b78; --line:#e4e4ea; }
+  * { box-sizing:border-box; }
+  body { margin:0; font:15px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif; color:var(--ink); background:var(--bg); }
+  header { padding:18px 18px 8px; }
+  h1 { font-size:20px; margin:0 0 4px; }
+  h2 { font-size:14px; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); margin:0 0 8px; }
+  .tag { display:inline-block; font-size:11px; padding:1px 7px; border-radius:99px; background:#eee; color:var(--muted); vertical-align:middle; }
+  .q { color:var(--muted); margin:0; max-width:900px; }
+  .tabs { display:flex; gap:6px; flex-wrap:wrap; padding:10px 18px; border-bottom:1px solid var(--line); }
+  .tabs button.on { background:var(--accent); color:#fff; border-color:var(--accent); }
+  main { display:grid; grid-template-columns: minmax(0,1.1fr) minmax(0,1fr); gap:14px; padding:14px 18px 40px; }
+  @media (max-width: 860px) { main { grid-template-columns: 1fr; } }
+  section { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px; margin-bottom:14px; }
+  button { font:inherit; font-size:13px; padding:6px 11px; border-radius:8px; border:1px solid var(--line); background:#fff; cursor:pointer; }
+  button:hover { border-color:var(--accent); }
+  button.primary { background:var(--accent); color:#fff; border-color:var(--accent); }
+  button:disabled { opacity:.4; cursor:default; }
+  .row { display:flex; gap:6px; flex-wrap:wrap; align-items:center; }
+  textarea { width:100%; font:inherit; padding:8px; border-radius:8px; border:1px solid var(--line); min-height:52px; margin-bottom:8px; }
+  .msg { border-left:3px solid var(--line); padding:6px 10px; margin:8px 0; }
+  .msg.char { border-left-color:var(--accent); background:#f6f4ff; border-radius:0 8px 8px 0; }
+  .who { font-weight:600; font-size:13px; }
+  .who small { font-weight:400; color:var(--muted); }
+  .meta { font-size:12px; color:var(--muted); margin-top:4px; }
+  .meta b { color:var(--ink); font-weight:600; }
+  .msg .row button { font-size:11px; padding:2px 7px; }
+  .changes { font-size:12px; color:#0b6b3a; margin:4px 0 0; padding-left:16px; }
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  td, th { text-align:left; padding:5px 4px; border-bottom:1px solid var(--line); vertical-align:middle; }
+  th { color:var(--muted); font-weight:500; }
+  .ph { font-size:11px; padding:1px 8px; border-radius:99px; }
+  .ph.on { background:#dcf5e6; color:#0b6b3a; } .ph.off { background:#eee; color:#777; }
+  .ph.entering { background:#fff1cc; color:#8a5a00; } .ph.exiting { background:#ffe0e0; color:#9a2121; }
+  pre { white-space:pre-wrap; background:#f3f3f6; padding:10px; border-radius:8px; font-size:12.5px; margin:6px 0 0; }
+  .ego-active { color:var(--accent); font-weight:600; }
+  .steps button { display:block; width:100%; text-align:left; margin:5px 0; }
+  .steps button.done { opacity:.5; }
+  .steps button.next { border-color:var(--accent); box-shadow:0 0 0 2px #e6e0ff; }
+  .scenario-desc { margin:0 0 8px; }
+  .watch { background:#fff8e6; border-radius:8px; padding:8px 10px; font-size:13px; }
+  label.inline { font-size:13px; display:inline-flex; gap:6px; align-items:center; }
+  select { font:inherit; font-size:13px; padding:4px; border-radius:6px; }
+  .open { background:#ffe9e9; border-radius:8px; padding:8px 10px; font-size:13px; margin-top:8px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Evolutia state model <span class="tag">PROTOTYPE · throwaway</span></h1>
+  <p class="q"><b>The question:</b> if Field State is worked out from the chat's messages (each message switches Fields and Alter Egos on or off, and the prompt reads the state as of the newest message), do Triggers, Entry/Exit Actions, Manual Switches, swipes, deleted messages, Branches and Alter Egos all behave the way a roleplayer expects? Chat as "You" and "Kael", or run a walkthrough tab. Nothing is saved.</p>
+</header>
+<div class="tabs" id="tabs"></div>
+<main>
+  <div>
+    <section id="scenario"></section>
+    <section>
+      <h2>Chat <span id="chatpick"></span></h2>
+      <div id="chat"></div>
+      <textarea id="input" placeholder="Type a message..."></textarea>
+      <div class="row">
+        <button class="primary" id="sendUser">Send as You</button>
+        <button class="primary" id="sendChar">Reply as Kael</button>
+        <button id="swipe">Swipe last reply</button>
+      </div>
+    </section>
+  </div>
+  <div>
+    <section>
+      <h2>State now</h2>
+      <div id="state"></div>
+    </section>
+    <section>
+      <h2>Prompt for the next reply</h2>
+      <div id="prompt"></div>
+    </section>
+    <section>
+      <h2>Settings</h2>
+      <div class="row">
+        <label class="inline">Window <select id="win"><option>1</option><option>2</option><option>3</option><option>5</option></select> recent messages</label>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <label class="inline">Enabling/Disabling Triggers read
+          <select id="latch"><option value="new">only the new message</option><option value="window">the whole Window</option></select>
+        </label>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <label class="inline">Ask for an unconfirmed Action up to <select id="tries"><option>1</option><option>2</option><option>3</option></select> replies</label>
+      </div>
+      <div class="open"><b>Open question this prototype raised:</b> if switch-on/off Triggers read the whole Window, a keyword can fire again on the next message and undo a Manual Switch. Walkthrough "Manual Switch vs a lingering keyword" shows it. Activating Triggers always read the Window.</div>
+    </section>
+    <section>
+      <h2>Kael's card (fixed for this demo)</h2>
+      <div id="cardview" style="font-size:13px"></div>
+    </section>
+  </div>
+</main>
+
+<!-- ===================== Portable logic module (no DOM) ===================== -->
+<script>
+const Evolutia = (() => {
+  const escRe = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+  function keywordMatches(kw, text) {
+    kw = kw.trim();
+    if (!kw || !text) return false;
+    const re = kw.match(/^\/(.+)\/([a-z]*)$/);
+    if (re) {
+      try { return new RegExp(re[1], re[2].includes('i') ? re[2] : re[2] + 'i').test(text); }
+      catch { return false; }
+    }
+    return new RegExp(`(^|[^\\p{L}\\p{N}_])${escRe(kw)}(?=$|[^\\p{L}\\p{N}_])`, 'iu').test(text);
+  }
+
+  function triggerMatches(trigger, text) {
+    if (!trigger || !trigger.keywords.length) return false;
+    const hits = trigger.keywords.map(k => keywordMatches(k, text));
+    return trigger.mode === 'ALL' ? hits.every(Boolean) : hits.some(Boolean);
+  }
+
+  // The last `n` messages ending at index `end`, keeping only the Trigger Sources asked for.
+  function windowText(messages, end, n, sources) {
+    const out = [];
+    for (let i = end; i >= 0 && out.length < n; i--) out.push(messages[i]);
+    return out.filter(m => sources[m.role]).map(m => m.text).join('\n');
+  }
+
+  const egoById = (card, id) => card.alterEgos.find(e => e.id === id);
+  const clone = v => JSON.parse(JSON.stringify(v));
+
+  function initialState(card) {
+    const fields = {};
+    for (const ego of card.alterEgos) {
+      fields[ego.id] = {};
+      for (const f of ego.fields) fields[ego.id][f.id] = { phase: f.startsOn ? 'on' : 'off', since: -1 };
+    }
+    return { ego: card.alterEgos[0].id, egoMove: null, fields, changes: [] };
+  }
+
+  function switchField(st, ego, f, on, i, skip, why) {
+    const fs = st.fields[ego.id][f.id];
+    if (on) {
+      if (fs.phase === 'on' || fs.phase === 'entering') return;
+      if (fs.phase === 'exiting') { fs.phase = 'on'; st.changes.push(`${f.name}: switch-off cancelled (${why})`); return; }
+      fs.phase = f.entryAction && !skip ? 'entering' : 'on';
+      fs.since = i; fs.tries = 0;
+      st.changes.push(`${f.name}: switched on (${why})` + (fs.phase === 'entering' ? '. Entry Action goes in the next prompt' : ''));
+    } else {
+      if (fs.phase === 'off' || fs.phase === 'exiting') return;
+      if (fs.phase === 'entering') { fs.phase = 'off'; st.changes.push(`${f.name}: switch-on cancelled (${why})`); return; }
+      fs.phase = f.exitAction && !skip ? 'exiting' : 'off';
+      fs.since = i; fs.tries = 0;
+      st.changes.push(`${f.name}: switched off (${why})` + (fs.phase === 'exiting' ? '. Exit Action goes in the next prompt' : ''));
+    }
+  }
+
+  function switchEgo(card, st, toId, i, skip, why) {
+    if (st.egoMove && st.egoMove.to === toId) return;
+    if (st.egoMove && toId === st.ego) { st.egoMove = null; st.changes.push(`Alter Ego change cancelled (${why})`); return; }
+    if (!st.egoMove && toId === st.ego) return;
+    const from = egoById(card, st.ego), to = egoById(card, toId);
+    if (!skip && (from.exitAction || to.entryAction)) {
+      st.egoMove = { to: toId, since: i, tries: 0 };
+      st.changes.push(`Alter Ego → ${to.name} (${why}). Actions go in the next prompt; ${from.name} stays until a reply is written`);
+    } else {
+      st.ego = toId; st.egoMove = null;
+      st.changes.push(`Alter Ego → ${to.name} (${why})`);
+    }
+  }
+
+  // State after message i, from the state before it.
+  function step(card, prev, messages, i, opts) {
+    const st = clone(prev);
+    st.changes = [];
+    const msg = messages[i];
+
+    // A reply was written: a pending Action is done if the reply confirms it
+    // (or it has no Confirm keywords); otherwise it is asked for again, up to opts.tries replies.
+    const confirmed = conf => !conf || !conf.keywords.length || triggerMatches(conf, msg.text);
+    if (msg.role === 'char') {
+      for (const ego of card.alterEgos) for (const f of ego.fields) {
+        const fs = st.fields[ego.id][f.id];
+        if (fs.since >= i || (fs.phase !== 'entering' && fs.phase !== 'exiting')) continue;
+        const entering = fs.phase === 'entering';
+        const label = entering ? 'Entry Action' : 'Exit Action';
+        if (confirmed(entering ? f.entryConfirm : f.exitConfirm)) {
+          fs.phase = entering ? 'on' : 'off';
+          st.changes.push(`${f.name}: reply confirmed the ${label}, content ${entering ? 'now in' : 'left'} the prompt`);
+        } else if (++fs.tries >= opts.tries) {
+          fs.phase = entering ? 'off' : 'on';
+          st.changes.push(`${f.name}: ${opts.tries} replies never confirmed the ${label}; gave up, Field stays ${fs.phase}`);
+        } else {
+          st.changes.push(`${f.name}: reply did not confirm the ${label} (try ${fs.tries} of ${opts.tries}); asking again`);
+        }
+      }
+      if (st.egoMove && st.egoMove.since < i) {
+        const from = egoById(card, st.ego), to = egoById(card, st.egoMove.to);
+        const conf = { keywords: [...(from.exitConfirm?.keywords || []), ...(to.entryConfirm?.keywords || [])], mode: 'ANY' };
+        if (confirmed(conf)) {
+          st.ego = to.id; st.egoMove = null;
+          st.changes.push(`Reply confirmed the change: now ${to.name}`);
+        } else if (++st.egoMove.tries >= opts.tries) {
+          st.egoMove = null;
+          st.changes.push(`${opts.tries} replies never confirmed the change to ${to.name}; gave up, still ${from.name}`);
+        } else {
+          st.changes.push(`Reply did not confirm the change to ${to.name} (try ${st.egoMove.tries} of ${opts.tries}); asking again`);
+        }
+      }
+    }
+
+    for (const sw of msg.manual || []) {
+      if (sw.kind === 'ego') switchEgo(card, st, sw.id, i, sw.skip, 'Manual Switch');
+      else {
+        const ego = egoById(card, sw.ego);
+        switchField(st, ego, ego.fields.find(f => f.id === sw.id), sw.on, i, sw.skip, 'Manual Switch');
+      }
+    }
+
+    const ego = egoById(card, st.ego);
+    for (const f of ego.fields) {
+      const text = opts.latch === 'new'
+        ? (f.sources[msg.role] ? msg.text : '')
+        : windowText(messages, i, opts.window, f.sources);
+      const en = triggerMatches(f.enabling, text), dis = triggerMatches(f.disabling, text);
+      if (dis) switchField(st, ego, f, false, i, false, en ? 'Disabling Trigger, beat an Enabling Trigger' : 'Disabling Trigger');
+      else if (en) switchField(st, ego, f, true, i, false, 'Enabling Trigger');
+    }
+
+    for (const other of card.alterEgos) {
+      if (other.id === st.ego || (st.egoMove && st.egoMove.to === other.id)) continue;
+      const egoText = opts.latch === 'new'
+        ? (other.entrySources[msg.role] ? msg.text : '')
+        : windowText(messages, i, opts.window, other.entrySources);
+      if (triggerMatches(other.entry, egoText)) { switchEgo(card, st, other.id, i, false, 'Entry Trigger'); break; }
+    }
+    return st;
+  }
+
+  // timeline[0] = before any message; timeline[i+1] = after message i.
+  function deriveTimeline(card, messages, opts) {
+    const t = [initialState(card)];
+    messages.forEach((_, i) => t.push(step(card, t[i], messages, i, opts)));
+    return t;
+  }
+
+  // What {{evolutia}} and the Action block say when the history ends at message k.
+  function promptFor(card, messages, timeline, k, opts) {
+    const st = timeline[k + 1];
+    const ego = egoById(card, st.ego);
+    const parts = [], actions = [], rows = [];
+    if (ego.promptName) parts.push(`${card.name} is currently going by: ${ego.promptName}.`);
+    for (const f of ego.fields) {
+      const fs = st.fields[ego.id][f.id];
+      const on = fs.phase === 'on' || fs.phase === 'exiting';
+      const gated = f.activating.keywords.length > 0;
+      const active = gated && triggerMatches(f.activating, windowText(messages, k, opts.window, f.sources));
+      const inPrompt = on && (!gated || active);
+      if (inPrompt) parts.push(`## ${f.name}\n${f.content}`);
+      if (fs.phase === 'entering') actions.push(f.entryAction);
+      if (fs.phase === 'exiting') actions.push(f.exitAction);
+      rows.push({ name: f.name, phase: fs.phase, gated, active, inPrompt });
+    }
+    if (st.egoMove) {
+      const to = egoById(card, st.egoMove.to);
+      if (ego.exitAction) actions.push(ego.exitAction);
+      if (to.entryAction) actions.push(to.entryAction);
+    }
+    return {
+      evolutia: parts.join('\n\n'),
+      actionBlock: actions.map(a => opts.template.replace('{{action}}', a)).join('\n'),
+      rows,
+    };
+  }
+
+  // The Display Identity of message i: the Alter Ego whose prompt wrote it.
+  function identityFor(card, timeline, i) {
+    const ego = egoById(card, timeline[i].ego);
+    return { name: ego.displayName || card.name, ego: ego.name };
+  }
+
+  return { deriveTimeline, promptFor, identityFor, egoById, triggerMatches };
+})();
+</script>
+
+<!-- ===================== Throwaway page shell ===================== -->
+<script>
+const CARD = {
+  name: 'Kael',
+  alterEgos: [
+    { id: 'human', name: 'Human Kael', displayName: null, promptName: null,
+      entry: { keywords: ['dawn', 'sunrise'], mode: 'ANY' }, entrySources: { user: true, char: true },
+      entryAction: null, exitAction: null, entryConfirm: null, exitConfirm: null,
+      fields: [
+        { id: 'look', name: 'Appearance', content: 'Tall, scarred, amber eyes, wears a grey travelling cloak.', startsOn: true,
+          activating: { keywords: [], mode: 'ANY' }, enabling: { keywords: [], mode: 'ANY' }, disabling: { keywords: [], mode: 'ANY' },
+          sources: { user: true, char: true }, entryAction: null, exitAction: null },
+        { id: 'secret', name: 'The Secret', content: 'Kael has admitted he is a werewolf and no longer hides it from {{user}}.', startsOn: false,
+          activating: { keywords: [], mode: 'ANY' }, enabling: { keywords: ['what are you', 'tell me the truth'], mode: 'ANY' }, disabling: { keywords: [], mode: 'ANY' },
+          sources: { user: true, char: false }, entryAction: 'Kael confesses to {{user}} that he is a werewolf.', exitAction: null,
+          entryConfirm: { keywords: ['werewolf'], mode: 'ANY' } },
+        { id: 'injury', name: 'Injury', content: 'Kael has a fresh wound on his side and moves stiffly.', startsOn: false,
+          activating: { keywords: [], mode: 'ANY' }, enabling: { keywords: ['stabbed', 'wounded'], mode: 'ANY' }, disabling: { keywords: ['bandaged', 'healed'], mode: 'ANY' },
+          sources: { user: true, char: true }, entryAction: null, exitAction: null },
+        { id: 'mira', name: 'Around Mira', content: 'Kael is guarded and formal whenever Mira is present.', startsOn: true,
+          activating: { keywords: ['Mira'], mode: 'ANY' }, enabling: { keywords: [], mode: 'ANY' }, disabling: { keywords: [], mode: 'ANY' },
+          sources: { user: true, char: true }, entryAction: null, exitAction: null },
+      ] },
+    { id: 'wolf', name: 'Werewolf', displayName: 'Werewolf Kael', promptName: 'the Werewolf',
+      entry: { keywords: ['full moon', '/transform(s|ed|ing)? into a (were)?wolf/'], mode: 'ANY' }, entrySources: { user: true, char: true },
+      entryAction: 'Under the full moon, Kael transforms into a huge black wolf.',
+      exitAction: 'As the sun rises, Kael turns back into a man, exhausted.',
+      entryConfirm: { keywords: ['howl', 'wolf', 'fur', '/transform\\w*/'], mode: 'ANY' },
+      exitConfirm: { keywords: ['human', 'man again', 'turns back'], mode: 'ANY' },
+      fields: [
+        { id: 'form', name: 'Form', content: 'A huge black wolf with amber eyes. Cannot speak, only growl.', startsOn: true,
+          activating: { keywords: [], mode: 'ANY' }, enabling: { keywords: [], mode: 'ANY' }, disabling: { keywords: [], mode: 'ANY' },
+          sources: { user: true, char: true }, entryAction: null, exitAction: null },
+        { id: 'instinct', name: 'Instincts', content: 'Driven by hunger and territory; protective of {{user}}.', startsOn: true,
+          activating: { keywords: [], mode: 'ANY' }, enabling: { keywords: [], mode: 'ANY' }, disabling: { keywords: [], mode: 'ANY' },
+          sources: { user: true, char: true }, entryAction: null, exitAction: null },
+      ] },
+  ],
+};
+const TEMPLATE = 'In your next reply, make this happen: {{action}}';
+
+let app;
+function reset() {
+  app = { chats: [{ name: 'Chat 1', messages: [] }], cur: 0, opts: { window: 1, latch: 'new', tries: 2, template: TEMPLATE } };
+}
+const chat = () => app.chats[app.cur];
+
+// Actions the buttons perform.
+const act = {
+  say: text => chat().messages.push({ role: 'user', text, manual: [] }),
+  reply: text => chat().messages.push({ role: 'char', text, manual: [] }),
+  swipe: text => {
+    const m = chat().messages, last = m[m.length - 1];
+    if (last && last.role === 'char') last.text = text || '(another version of the reply)';
+  },
+  edit: (i, text) => { chat().messages[i].text = text; },
+  del: i => chat().messages.splice(i, 1),
+  branch: i => {
+    app.chats.push({ name: `Branch of ${chat().name} at message ${i + 1}`, messages: JSON.parse(JSON.stringify(chat().messages.slice(0, i + 1))) });
+    app.cur = app.chats.length - 1;
+  },
+  manual: sw => {
+    const m = chat().messages;
+    if (m.length) m[m.length - 1].manual.push(sw);
+  },
+  setWindow: n => { app.opts.window = n; },
+  setLatch: v => { app.opts.latch = v; },
+  setTries: n => { app.opts.tries = n; },
+  goChat: i => { app.cur = i; },
+};
+
+const SCENARIOS = [
+  { title: 'Your free-play chat',
+    desc: 'Your own run from the screenshot: you play someone who does not know Kael\'s secret, he denies it, then admits it, then transforms.',
+    watch: 'Message 2 ("just a human") no longer counts as the confession: the Action is asked for again. Message 4 confirms it. Message 5 now fires the Werewolf (regex "transform into a werewolf") and the change waits for a reply that confirms it.',
+    steps: [
+      ['You: "Um what are you?"', () => act.say('Um what are you?')],
+      ['Kael: "Im just a human"', () => act.reply('Im just a human')],
+      ['You: "No you\'re not you a werewolf!"', () => act.say("No you're not you a werewolf!")],
+      ['Kael: "You got me i am indeed a werewolf!"', () => act.reply('You got me i am indeed a werewolf!')],
+      ['Kael: "Kael proceed to howl at the moon and transform into a werewolf"', () => act.reply('Kael proceed to howl at the moon and transform into a werewolf')],
+      ['Kael (wolf): "A low growl, fur bristling."', () => act.reply('A low growl, fur bristling.')],
+    ] },
+  { title: 'Kael never confesses',
+    desc: 'The Secret is triggered but Kael dodges twice.',
+    watch: 'After two replies without "werewolf", Evolutia gives up and the Secret stays off, so the prompt never claims a confession that did not happen.',
+    steps: [
+      ['You: "What are you?"', () => act.say('What are you?')],
+      ['Kael dodges', () => act.reply('"Just a traveller."')],
+      ['You: "Seriously."', () => act.say('Seriously.')],
+      ['Kael dodges again', () => act.reply('He shrugs and walks on.')],
+    ] },
+  { title: 'A secret comes out',
+    desc: 'The user asks Kael what he is. "The Secret" has an Enabling Trigger and an Entry Action.',
+    watch: 'After step 1 the Secret is pending: the prompt carries the Entry Action, not the content. Once Kael replies, the content enters the prompt and the Action disappears.',
+    steps: [
+      ['You: "Kael, tell me the truth. What are you?"', () => act.say('Kael, tell me the truth. What are you?')],
+      ['Kael replies with a confession', () => act.reply('He looks away. "I am a werewolf. I have been all along."')],
+      ['You: "Thank you for telling me."', () => act.say('Thank you for telling me.')],
+    ] },
+  { title: 'Swipe while an Action is pending',
+    desc: 'Kael dodges the question. The dodge does not contain a Confirm keyword ("werewolf"), so it does not count. Swiping gets a better reply.',
+    watch: 'After step 2 the Secret is still switching on (try 1 of 2). The swipe is written from the same prompt, with the Entry Action in it, and its "werewolf" confirms the Secret.',
+    steps: [
+      ['You: "Tell me the truth."', () => act.say('Tell me the truth.')],
+      ['Kael changes the subject', () => act.reply('"We should keep moving," he says.')],
+      ['Swipe: Kael confesses', () => act.swipe('He sighs. "Fine. I am a werewolf."')],
+    ] },
+  { title: 'Undo by deleting',
+    desc: 'Deleting the message that fired a Trigger undoes the change, because state is worked out from the messages.',
+    watch: 'After the delete, the Secret goes back to off.',
+    steps: [
+      ['You: "What are you?"', () => act.say('What are you?')],
+      ['Kael confesses', () => act.reply('"A werewolf."')],
+      ['Delete your question (message 1)', () => act.del(0)],
+    ] },
+  { title: 'Full moon and back',
+    desc: 'Kael is wounded as a human, turns into the Werewolf (another Alter Ego) under the full moon, then turns back at sunrise.',
+    watch: 'While the Werewolf is active the Injury is not in the prompt (it belongs to Human Kael), but it is still on when he turns back. Replies written as the wolf show "Werewolf Kael".',
+    steps: [
+      ['You: "You got stabbed!"', () => act.say('Watch out! ... You got stabbed!')],
+      ['Kael replies', () => act.reply('He grits his teeth. "It is nothing."')],
+      ['You: "Look, the full moon is rising."', () => act.say('Look, the full moon is rising.')],
+      ['Kael replies (transformation)', () => act.reply('His bones crack. A howl tears out of him.')],
+      ['You: "Easy, boy."', () => act.say('Easy, boy.')],
+      ['Kael (wolf) replies', () => act.reply('A low growl.')],
+      ['You: "Sunrise, finally."', () => act.say('Sunrise, finally.')],
+      ['Kael replies (turning back)', () => act.reply('He collapses, human again, clutching his side.')],
+    ] },
+  { title: 'Branch before and after the change',
+    desc: 'Branches inherit the state as of the message they branch from.',
+    watch: 'Branching at message 1 (before the moon) gives Human Kael. Switch back to Chat 1 and branch at message 2 (after the transformation reply): Werewolf.',
+    steps: [
+      ['You: "Is that the full moon?"', () => act.say('Is that the full moon?')],
+      ['Kael transforms', () => act.reply('A howl.')],
+      ['Branch at message 1', () => act.branch(0)],
+      ['Back to Chat 1', () => act.goChat(0)],
+      ['Branch at message 2', () => act.branch(1)],
+    ] },
+  { title: 'Manual Switch vs a lingering keyword',
+    desc: 'Window is set to 3 and Enabling/Disabling Triggers read the whole Window. The user turns the Injury off by hand, but "stabbed" is still in the Window.',
+    watch: 'After step 4 the Injury switches itself back on: the keyword fired again. Then step 5 changes the setting to "only the new message" and the Manual Switch holds. This is the open question.',
+    steps: [
+      ['Window 3, switch Triggers read the whole Window', () => { act.setWindow(3); act.setLatch('window'); }],
+      ['You: "You got stabbed!"', () => act.say('You got stabbed!')],
+      ['Kael replies', () => act.reply('"Just a scratch."')],
+      ['Manual Switch: Injury off', () => act.manual({ kind: 'field', ego: 'human', id: 'injury', on: false, skip: true })],
+      ['You: "Let\'s keep walking."', () => act.say("Let's keep walking.")],
+      ['Setting: switch Triggers read only the new message', () => act.setLatch('new')],
+    ] },
+  { title: 'Disabling beats Enabling',
+    desc: 'One message says both "stabbed" and "bandaged".',
+    watch: 'The Injury stays off: when both match, the Disabling Trigger wins.',
+    steps: [
+      ['You: "You got stabbed but I bandaged it."', () => act.say('You got stabbed but I bandaged it.')],
+    ] },
+  { title: 'Activating Trigger comes and goes',
+    desc: '"Around Mira" is always on, but only reaches the prompt while "Mira" is in the Window.',
+    watch: 'With Window 1, it is in the prompt after step 1 and gone after step 2.',
+    steps: [
+      ['You: "Mira just walked in."', () => act.say('Mira just walked in.')],
+      ['You: "She left again."', () => act.say('She left again.')],
+    ] },
+];
+
+let tab = -1, stepIdx = 0;
+
+function esc(s) { return String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
+const ph = p => `<span class="ph ${p}">${{ on: 'on', off: 'off', entering: 'switching on', exiting: 'switching off' }[p]}</span>`;
+
+function render() {
+  const msgs = chat().messages, opts = app.opts;
+  const tl = Evolutia.deriveTimeline(CARD, msgs, opts);
+  const now = tl[tl.length - 1];
+
+  document.getElementById('tabs').innerHTML =
+    `<button class="${tab < 0 ? 'on' : ''}" data-tab="-1">Free play</button>` +
+    SCENARIOS.map((s, i) => `<button class="${tab === i ? 'on' : ''}" data-tab="${i}">${esc(s.title)}</button>`).join('');
+
+  const sc = document.getElementById('scenario');
+  if (tab < 0) {
+    sc.innerHTML = `<h2>Free play</h2><p class="scenario-desc">Type messages as You or Kael. Try the keywords on the card (below): <i>what are you, stabbed, bandaged, Mira, full moon, sunrise</i>. Use the buttons in "State now" for Manual Switches.</p>`;
+  } else {
+    const s = SCENARIOS[tab];
+    sc.innerHTML = `<h2>Walkthrough: ${esc(s.title)}</h2><p class="scenario-desc">${esc(s.desc)}</p><div class="watch"><b>Watch for:</b> ${esc(s.watch)}</div>
+      <div class="steps">${s.steps.map((st, i) => `<button data-step="${i}" class="${i < stepIdx ? 'done' : i === stepIdx ? 'next' : ''}" ${i !== stepIdx ? 'disabled' : ''}>${i + 1}. ${esc(st[0])}</button>`).join('')}</div>
+      <button data-restart>Restart walkthrough</button>`;
+  }
+
+  document.getElementById('chatpick').innerHTML = app.chats.length > 1
+    ? `<select id="chatsel">${app.chats.map((c, i) => `<option value="${i}" ${i === app.cur ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select>` : '';
+
+  document.getElementById('chat').innerHTML = msgs.length ? msgs.map((m, i) => {
+    const after = tl[i + 1];
+    let who, extra = '';
+    if (m.role === 'char') {
+      const id = Evolutia.identityFor(CARD, tl, i);
+      who = `${esc(id.name)} <small>(${esc(id.ego)})</small>`;
+      const p = Evolutia.promptFor(CARD, msgs, tl, i - 1, opts);
+      extra = `<div class="meta">Its prompt asked for: ${p.actionBlock ? '<b>' + esc(p.actionBlock) + '</b>' : 'no Actions'}</div>`;
+    } else who = 'You';
+    const manual = m.manual.length ? `<div class="meta">Manual Switch here: ${m.manual.map(s => esc(s.kind === 'ego' ? 'Alter Ego → ' + Evolutia.egoById(CARD, s.id).name : s.id + (s.on ? ' on' : ' off'))).join(', ')}</div>` : '';
+    return `<div class="msg ${m.role}"><div class="who">${i + 1}. ${who}</div><div>${esc(m.text)}</div>${extra}${manual}
+      ${after.changes.length ? `<ul class="changes">${after.changes.map(c => `<li>${esc(c)}</li>`).join('')}</ul>` : ''}
+      <div class="row" style="margin-top:4px"><button data-edit="${i}">Edit</button><button data-del="${i}">Delete</button><button data-branch="${i}">Branch here</button></div></div>`;
+  }).join('') : '<p class="meta">No messages yet.</p>';
+
+  const curEgo = Evolutia.egoById(CARD, now.ego);
+  const hasMsg = msgs.length > 0;
+  document.getElementById('state').innerHTML =
+    `<p style="margin:0 0 8px">Active Alter Ego: <span class="ego-active">${esc(curEgo.name)}</span>` +
+    (now.egoMove ? ` → <b>${esc(Evolutia.egoById(CARD, now.egoMove.to).name)}</b> after the next reply` : '') + `</p>` +
+    CARD.alterEgos.map(ego => `<table><tr><th colspan="3">${esc(ego.name)} ${ego.id === now.ego ? '(active)' : ''}
+        <button data-ego="${ego.id}" ${!hasMsg || ego.id === now.ego ? 'disabled' : ''}>Switch to</button></th></tr>` +
+      ego.fields.map(f => {
+        const p = now.fields[ego.id][f.id].phase;
+        const isOn = p === 'on' || p === 'entering';
+        return `<tr><td>${esc(f.name)}</td><td>${ph(p)}</td><td style="text-align:right">
+          <button data-field="${ego.id}:${f.id}:${!isOn}:0" ${hasMsg ? '' : 'disabled'}>Turn ${isOn ? 'off' : 'on'}</button>
+          <button data-field="${ego.id}:${f.id}:${!isOn}:1" ${hasMsg ? '' : 'disabled'}>…skip Action</button></td></tr>`;
+      }).join('') + `</table>`).join('<div style="height:8px"></div>') +
+    (hasMsg ? '' : '<p class="meta">Manual Switches attach to the newest message, so send one first.</p>');
+
+  const p = Evolutia.promptFor(CARD, msgs, tl, msgs.length - 1, opts);
+  document.getElementById('prompt').innerHTML =
+    `<table><tr><th>Field (${esc(curEgo.name)})</th><th>State</th><th>In the Prompt?</th></tr>` +
+    p.rows.map(r => `<tr><td>${esc(r.name)}</td><td>${ph(r.phase)}</td><td>${r.inPrompt ? '✅ yes' : '— no'}${r.gated ? ` <small class="meta">(Activating Trigger ${r.active ? 'matches' : 'does not match'})</small>` : ''}</td></tr>`).join('') +
+    `</table><div class="meta" style="margin-top:8px">Description slot, <code>{{evolutia}}</code>:</div><pre>${esc(p.evolutia || '(empty)')}</pre>` +
+    `<div class="meta" style="margin-top:8px">Action block, next to the reply:</div><pre>${esc(p.actionBlock || '(none)')}</pre>`;
+
+  document.getElementById('win').value = String(opts.window);
+  document.getElementById('latch').value = opts.latch;
+  document.getElementById('tries').value = String(opts.tries);
+
+  document.getElementById('cardview').innerHTML = CARD.alterEgos.map(e =>
+    `<p style="margin:6px 0"><b>${esc(e.name)}</b>${e.entry.keywords.length ? ` · Entry Triggers: <i>${esc(e.entry.keywords.join(', '))}</i>` : ''}${e.entryAction ? ` · Entry Action: "${esc(e.entryAction)}"` : ''}${e.exitAction ? ` · Exit Action: "${esc(e.exitAction)}"` : ''}${(e.entryConfirm || e.exitConfirm) ? ` · Confirm: <i>${esc([...(e.entryConfirm?.keywords || []), ...(e.exitConfirm?.keywords || [])].join(', '))}</i>` : ''} · Entry Triggers read: ${[e.entrySources.user && 'You', e.entrySources.char && 'Kael'].filter(Boolean).join(' + ')}</p><ul style="margin:0;padding-left:18px">` +
+    e.fields.map(f => `<li><b>${esc(f.name)}</b> (starts ${f.startsOn ? 'on' : 'off'})` +
+      (f.enabling.keywords.length ? ` · Enabling: <i>${esc(f.enabling.keywords.join(', '))}</i>` : '') +
+      (f.disabling.keywords.length ? ` · Disabling: <i>${esc(f.disabling.keywords.join(', '))}</i>` : '') +
+      (f.activating.keywords.length ? ` · Activating: <i>${esc(f.activating.keywords.join(', '))}</i>` : '') +
+      (f.entryAction ? ` · Entry Action: "${esc(f.entryAction)}"` : '') +
+      (f.entryConfirm ? ` · Confirm: <i>${esc(f.entryConfirm.keywords.join(', '))}</i>` : '') +
+      ` · reads: ${[f.sources.user && 'You', f.sources.char && 'Kael'].filter(Boolean).join(' + ')}</li>`).join('') + '</ul>').join('');
+}
+
+document.addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  const input = document.getElementById('input');
+  if (b.dataset.tab !== undefined) { tab = +b.dataset.tab; stepIdx = 0; reset(); }
+  else if (b.dataset.step !== undefined) { SCENARIOS[tab].steps[stepIdx][1](); stepIdx++; }
+  else if (b.hasAttribute('data-restart')) { stepIdx = 0; reset(); }
+  else if (b.id === 'sendUser' && input.value.trim()) { act.say(input.value.trim()); input.value = ''; }
+  else if (b.id === 'sendChar' && input.value.trim()) { act.reply(input.value.trim()); input.value = ''; }
+  else if (b.id === 'swipe') { act.swipe(input.value.trim()); input.value = ''; }
+  else if (b.dataset.edit !== undefined) { const i = +b.dataset.edit; const t = prompt('Edit message', chat().messages[i].text); if (t != null) act.edit(i, t); }
+  else if (b.dataset.del !== undefined) act.del(+b.dataset.del);
+  else if (b.dataset.branch !== undefined) act.branch(+b.dataset.branch);
+  else if (b.dataset.ego) act.manual({ kind: 'ego', id: b.dataset.ego, skip: false });
+  else if (b.dataset.field) { const [ego, id, on, skip] = b.dataset.field.split(':'); act.manual({ kind: 'field', ego, id, on: on === 'true', skip: skip === '1' }); }
+  else return;
+  render();
+});
+document.addEventListener('change', e => {
+  if (e.target.id === 'win') act.setWindow(+e.target.value);
+  else if (e.target.id === 'latch') act.setLatch(e.target.value);
+  else if (e.target.id === 'tries') act.setTries(+e.target.value);
+  else if (e.target.id === 'chatsel') act.goChat(+e.target.value);
+  else return;
+  render();
+});
+
+reset();
+render();
+</script>
+</body>
+</html>
