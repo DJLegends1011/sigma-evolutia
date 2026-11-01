@@ -2,7 +2,7 @@
 //     node --test test/
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { deriveTimeline, promptFor, identityFor } from '../client/core/evolve.js';
+import { deriveTimeline, promptFor, identityFor, badgeFor, stripTriggeredMessage } from '../client/core/evolve.js';
 
 const trig = (...keywords) => ({ keywords, mode: 'ANY' });
 const field = (id, name, content, more = {}) => ({
@@ -223,3 +223,23 @@ test('a Manual Switch to the active Alter Ego while a change waits cancels the c
     assert.equal(timeline.at(-1).ego, 'human');
     assert.equal(timeline.at(-1).egoMove, null);
 });
+
+test('a Disguise Alter Ego instructs the scene to treat it as a separate identity and emits a Disguise badge', () => {
+    const def = wolfDef();
+    def.alterEgos[1].disguise = true;
+    def.alterEgos[1].withAction = true;
+    const chat = [you('Look, the full moon.'), kael('A howl.'), you('Stay in character.')];
+    const timeline = deriveTimeline(def, chat, OPTS);
+    assert.match(promptFor(def, chat, timeline, 2, OPTS).evolutia, /disguised \/ presenting in-scene as: the Werewolf/);
+    assert.deepEqual(badgeFor(def, timeline, 2), { text: 'Disguise', disguise: true });
+});
+
+test('stripTriggeredMessage strips matched keywords when stripTriggers is enabled and records the switch', () => {
+    const def = wolfDef();
+    def.alterEgos[1].stripTriggers = true;
+    const timeline = deriveTimeline(def, [], OPTS);
+    const res = stripTriggeredMessage(def, timeline[0], 'user', 'Hello there full moon tonight', 'char');
+    assert.equal(res.text, 'Hello there tonight');
+    assert.deepEqual(res.manual, [{ kind: 'ego', id: 'wolf' }]);
+});
+

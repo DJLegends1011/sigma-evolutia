@@ -5,6 +5,42 @@ import { switchPatch } from './core/definition.js';
 
 const enc = encodeURIComponent;
 
+// Resolves any supported Alter Ego avatar descriptor ({ media }, { persona }, { character }, { upload }, { url })
+// to a browser image URL.
+export function resolveAvatarThumb(avatar, CoreAPI, size = 192) {
+    if (!avatar) return null;
+    if (avatar.media) return CoreAPI.thumbUrl('media', avatar.media, size);
+    if (avatar.persona) return CoreAPI.thumbUrl('persona', avatar.persona, size);
+    if (avatar.character) return `/avatars/${enc(avatar.character)}.png`;
+    if (avatar.upload) return `/api/ext/evolutia/avatars/${enc(avatar.upload)}`;
+    if (avatar.url) return String(avatar.url);
+    return null;
+}
+
+async function fetchLibraryCharacterChoices(CoreAPI) {
+    try {
+        const res = await CoreAPI.apiRequest('/characters?limit=500&count=false');
+        const body = await res.json();
+        const items = Array.isArray(body?.items) ? body.items : (Array.isArray(body) ? body : []);
+        return items.map(c => ({
+            avatar: { character: c.id },
+            thumb: `/avatars/${enc(c.id)}.png`,
+            label: `${c.name} (Card)`,
+        }));
+    } catch {
+        return [];
+    }
+}
+
+function fileToDataUrl(file) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result || ''));
+        reader.onerror = () => reject(new Error('Failed to read image file'));
+        reader.readAsDataURL(file);
+    });
+}
+
 // A character card: Fields on the card, written through the app's own character.update (the details then know
 // the write for their own); the Description becomes {{evolutia}} (ADR 0003).
 export function cardOwner(character, ctx) {
@@ -56,13 +92,17 @@ export function cardOwner(character, ctx) {
 
         avatar: {
             ownLabel: "Card's own",
-            thumb: (a) => (a?.media ? CoreAPI.thumbUrl('media', a.media, 96) : null),
-            emptyHint: "This card's gallery has no pictures yet.",
+            thumb: (a) => resolveAvatarThumb(a, CoreAPI, 96),
+            emptyHint: "This card's gallery and library have no pictures yet.",
             async choices() {
-                const res = await CoreAPI.apiRequest(`/characters/${enc(character.id)}/media?limit=100&count=false`);
-                const page = await res.json();
-                return (page.items || []).filter(m => m.kind !== 'video')
+                const [mediaRes, charChoices] = await Promise.all([
+                    CoreAPI.apiRequest(`/characters/${enc(character.id)}/media?limit=100&count=false`),
+                    fetchLibraryCharacterChoices(CoreAPI),
+                ]);
+                const page = await mediaRes.json();
+                const mediaChoices = (page.items || []).filter(m => m.kind !== 'video')
                     .map(m => ({ avatar: { media: m.id }, thumb: CoreAPI.thumbUrl('media', m.id, 96), label: m.displayName }));
+                return [...mediaChoices, ...charChoices.filter(c => c.avatar.character !== character.id)];
             },
             async upload(file) {
                 const res = await CoreAPI.apiRequest(`/characters/${enc(character.id)}/media?name=${enc(file.name)}`, 'POST', file,
@@ -76,7 +116,8 @@ export function cardOwner(character, ctx) {
 }
 
 // A persona: Fields and the Original Description in Evolutia's own table; the description becomes
-// {{evolutia_persona}} (ADR 0006). An Alter Ego's avatar is one of the account's persona pictures.
+// {{evolutia_persona}} (ADR 0006). An Alter Ego's avatar can come from any persona, any library character,
+// a direct image upload, or a custom URL.
 export function personaOwner(persona, ctx) {
     const { CoreAPI } = ctx;
     const call = ctx.server.call;
@@ -97,15 +138,23 @@ export function personaOwner(persona, ctx) {
 
         avatar: {
             ownLabel: "Persona's own",
-            thumb: (a) => (a?.persona ? CoreAPI.thumbUrl('persona', a.persona, 96) : null),
-            emptyHint: 'None of your personas has a picture yet.',
+            thumb: (a) => resolveAvatarThumb(a, CoreAPI, 96),
+            emptyHint: 'No persona or character pictures found yet.',
             async choices() {
-                const res = await CoreAPI.apiRequest('/personas');
-                const { personas = [] } = await res.json();
-                return personas.filter(p => p.avatar)
-                    .map(p => ({ avatar: { persona: p.id }, thumb: CoreAPI.thumbUrl('persona', p.id, 96), label: p.name }));
+                const [pRes, charChoices] = await Promise.all([
+                    CoreAPI.apiRequest('/personas'),
+                    fetchLibraryCharacterChoices(CoreAPI),
+                ]);
+                const { personas = [] } = await pRes.json();
+                const personaChoices = personas.filter(p => p.avatar)
+                    .map(p => ({ avatar: { persona: p.id }, thumb: CoreAPI.thumbUrl('persona', p.id, 96), label: `${p.name} (Persona)` }));
+                return [...personaChoices, ...charChoices];
             },
-            upload: null,
+            async upload(file) {
+                const dataUrl = await fileToDataUrl(file);
+                const res = await call('/avatars', 'POST', { filename: file.name || 'persona-ego.png', dataUrl });
+                return res.avatar || { upload: res.file };
+            },
         },
     };
 }

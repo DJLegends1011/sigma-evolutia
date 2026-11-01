@@ -2,11 +2,16 @@
 //     node --test test/server.test.mjs
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { startSigma } from '../../../../ProjectSigma-main/tools/extension-kit/index.mjs';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
+const kitPath = [
+    path.resolve(here, '../../../../ProjectSigma-main/tools/extension-kit/index.mjs'),
+    path.resolve(here, '../../../../../ProjectSigma-main/tools/extension-kit/index.mjs'),
+].find(p => fs.existsSync(p));
+const { startSigma } = await import(pathToFileURL(kitPath).href);
 const sigma = await startSigma({ prefix: 'evolutia-test', extensions: [path.join(here, '..')] });
 after(() => sigma.close());
 const me = sigma.session;
@@ -201,3 +206,44 @@ test('a persona Manual Switch changes only the persona, and the chat state repor
     assert.equal(state.persona.egos[0].fields.find(f => f.id === 'eyes').phase, 'on');
     assert.deepEqual(state.persona.identities[seqs[1]], { name: 'Demetri (glowing)', avatar: null });
 });
+
+test('stripTriggers removes the trigger phrase from a newly created message and still triggers the Alter Ego swap', async () => {
+    const personaId = await demetri('A laid-back student.');
+    const def = human([field('id', 'Identity', 'Demetri base.')]);
+    def.alterEgos.push({
+        ...def.alterEgos[0],
+        id: 'bambi',
+        name: 'Bambi',
+        disguise: true,
+        stripTriggers: true,
+        entry: trig('!morphbambi'),
+        entrySources: { user: true, char: false },
+        fields: [field('bambi-look', 'Appearance', 'Platinum blonde.', { startsOn: true })],
+    });
+    await evolutia(`/personas/${personaId}/on`, 'PUT', { on: true, definition: def });
+    const { chatId } = await kael(null);
+    await me.api(`/chats/${chatId}/messages`, 'POST', { mes: '!morphbambi Hey there!' });
+    const msgs = (await me.api(`/chats/${chatId}`)).body.messages;
+    assert.equal(msgs.at(-1).content, 'Hey there!');
+    const text = await prompt(chatId);
+    assert.match(text, /disguised \/ presenting in-scene as: Bambi/);
+    assert.match(text, /## Appearance\nPlatinum blonde\./);
+});
+
+test('uploading a custom avatar returns an upload avatar descriptor and client page boots cleanly with __SIGMA_EVOLUTIA__', async () => {
+    const tinyPng = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=';
+    const up = await evolutia('/avatars', 'POST', { filename: 'bambi.png', dataUrl: tinyPng });
+    assert.equal(up.status, 200);
+    assert.ok(up.body.avatar?.upload);
+
+    const page = await me.page();
+    try {
+        await page.boot();
+        assert.ok(globalThis.window?.__SIGMA_EVOLUTIA__, 'window.__SIGMA_EVOLUTIA__ is exposed');
+        assert.equal(globalThis.window.__SIGMA_EVOLUTIA__.version, '0.3.0');
+    } finally {
+        await page.close();
+    }
+});
+
+

@@ -1,8 +1,13 @@
-// The Evolutia editor, for a card (its details tab) or a persona (a dialog from Settings › Chat): switching
-// Evolutia on, and editing Alter Egos and their Fields.
+// The Evolutia editor, for a card (its details tab or chat window tab) or a persona (Settings › Chat or chat
+// window tab): switching Evolutia on, and editing Alter Egos and their Fields.
 import { blankField, idFor, rebuildFromDescription } from './core/definition.js';
 
 const hasHeadings = (text) => /^#{1,6}\s+\S/m.test(String(text ?? ''));
+
+function estimateTokens(text = '') {
+    const s = String(text ?? '').trim();
+    return s ? Math.max(1, Math.ceil(s.length / 4)) : 0;
+}
 
 // Keywords as typed: one per line or comma-separated; a /regex/ keeps its own line whole.
 export function parseKeywords(text) {
@@ -23,7 +28,7 @@ function setPath(obj, path, value) {
 }
 
 // The editor of one owner's Field Definitions (a card's or a persona's, see owners.js).
-export function mountEditor(pane, owner, ctx, { bigEditor }) {
+export function mountEditor(pane, owner, ctx, { bigEditor, onChanged } = {}) {
     const { CoreAPI } = ctx;
     const esc = (s) => CoreAPI.escapeHtml(String(s ?? ''));
     let on = false, def = null, got = null, saved = '', egoIndex = 0, gallery = null;
@@ -40,7 +45,7 @@ export function mountEditor(pane, owner, ctx, { bigEditor }) {
             on = got.on;
             def = got.definition;
             saved = JSON.stringify(def);
-            egoIndex = 0;
+            egoIndex = Math.min(egoIndex, Math.max(0, (def?.alterEgos?.length || 1) - 1));
             render();
         } catch (e) {
             pane.innerHTML = `<p class="evo-error">Could not read Evolutia's data: ${esc(e.message)}</p>`;
@@ -89,14 +94,19 @@ export function mountEditor(pane, owner, ctx, { bigEditor }) {
         <div class="evo-label-row"><span class="evo-label">${label}</span>
             <button type="button" class="evo-expand" data-act="expand" data-for="${path}" data-label="${esc(label)}" title="Expand editor"><i class="fa-solid fa-expand"></i></button></div>`;
 
-    // What a Field's summary line says about it, kept current as it is edited.
-    const pillsHtml = (f) => [
-        f.startsOn ? 'starts on' : 'starts off',
-        f.activating.keywords.length ? 'activating' : '',
-        f.enabling.keywords.length ? 'enabling' : '',
-        f.disabling.keywords.length ? 'disabling' : '',
-        f.entryAction || f.exitAction ? 'actions' : '',
-    ].filter(Boolean).map(t => `<span class="evo-pill">${t}</span>`).join('');
+    // What a Field's summary line says about it, kept current as it is edited (including live token pill).
+    const pillsHtml = (f) => {
+        const tokens = estimateTokens(f.content);
+        const tags = [
+            f.startsOn ? 'starts on' : 'starts off',
+            f.activating?.keywords?.length ? 'activating' : '',
+            f.enabling?.keywords?.length ? 'enabling' : '',
+            f.disabling?.keywords?.length ? 'disabling' : '',
+            f.entryAction || f.exitAction ? 'actions' : '',
+        ].filter(Boolean).map(t => `<span class="evo-pill">${t}</span>`);
+        tags.push(`<span class="evo-pill evo-token-pill">~${tokens} tok</span>`);
+        return tags.join('');
+    };
 
     function fieldHtml(f, fi, count) {
         const p = `alterEgos.${egoIndex}.fields.${fi}`;
@@ -112,6 +122,7 @@ export function mountEditor(pane, owner, ctx, { bigEditor }) {
                 ${trigger(`${p}.activating`, 'Activating Trigger', 'While set, the Field is in the prompt only when one of these is in the recent messages (the Window).', f.activating)}
                 ${trigger(`${p}.enabling`, 'Enabling Trigger', 'Switches the Field on when the newest message says one of these.', f.enabling)}
                 ${trigger(`${p}.disabling`, 'Disabling Trigger', 'Switches it off. When both match in one message, this one wins.', f.disabling)}
+                ${sw(`${p}.stripTriggers`, !!f.stripTriggers, 'Strip matched Enabling/Disabling keyword from sent message')}
                 ${action(`${p}.entry`, 'Entry Action', 'Asked of the next reply when the Field switches on; its content follows once a reply confirms it.', f.entryAction, f.entryConfirm)}
                 ${action(`${p}.exit`, 'Exit Action', 'Asked of the next reply when the Field switches off.', f.exitAction, f.exitConfirm)}
                 ${withActionSwitch(`${p}.withAction`, f.withAction)}
@@ -130,9 +141,11 @@ export function mountEditor(pane, owner, ctx, { bigEditor }) {
         const shown = thumb ? `<img class="evo-avatar" src="${esc(thumb)}" alt="">` : '<span class="evo-avatar evo-avatar-own"><i class="fa-solid fa-user"></i></span>';
         const key = JSON.stringify(ego.avatar ?? null);
         const grid = gallery === null ? '' : gallery.length
-            ? `<div class="evo-gallery">${gallery.map((c, i) => `<button type="button" class="evo-gallery-pick ${JSON.stringify(c.avatar) === key ? 'is-on' : ''}" data-act="pick-avatar" data-choice="${i}">
-                <img src="${esc(c.thumb)}" alt="${esc(c.label)}" loading="lazy"></button>`).join('')}</div>`
+            ? `<div class="evo-gallery">${gallery.map((c, i) => `<button type="button" class="evo-gallery-pick ${JSON.stringify(c.avatar) === key ? 'is-on' : ''}" data-act="pick-avatar" data-choice="${i}" title="${esc(c.label)}">
+                <img src="${esc(c.thumb)}" alt="${esc(c.label)}" loading="lazy">
+                <span class="evo-gallery-caption">${esc(c.label)}</span></button>`).join('')}</div>`
             : `<p class="evo-hint">${esc(owner.avatar.emptyHint)}</p>`;
+        const customUrl = ego.avatar?.url || '';
         return `
             <div class="evo-avatar-row">${shown}
                 <div class="evo-buttons">
@@ -140,6 +153,9 @@ export function mountEditor(pane, owner, ctx, { bigEditor }) {
                     <button type="button" class="cl-btn cl-btn-secondary" data-act="gallery">Choose a picture</button>
                     ${owner.avatar.upload ? '<label class="cl-btn cl-btn-secondary evo-upload"><i class="fa-solid fa-upload"></i> Upload<input type="file" accept="image/*" data-act="upload" hidden></label>' : ''}
                 </div>
+            </div>
+            <div class="evo-row">
+                <input class="cl-input" data-act="avatar-url" value="${esc(customUrl)}" placeholder="Or paste custom image URL (https://... or /avatars/...)">
             </div>${grid}`;
     }
 
@@ -154,9 +170,12 @@ export function mountEditor(pane, owner, ctx, { bigEditor }) {
                 ${first ? '<p class="evo-hint">The first Alter Ego is where every chat starts.</p>' : ''}
                 ${trigger(`${p}.entry`, 'Entry Trigger', 'Makes this the active Alter Ego when the newest message says one of these.', ego.entry)}
                 ${reads(`${p}.entrySources`, ego.entrySources)}
+                ${sw(`${p}.stripTriggers`, !!ego.stripTriggers, 'Strip matched Entry Trigger keyword from sent message')}
                 ${action(`${p}.entry`, 'Entry Action', 'Asked of the next reply when this Alter Ego takes over.', ego.entryAction, ego.entryConfirm)}
                 ${action(`${p}.exit`, 'Exit Action', 'Asked of the next reply when another Alter Ego takes over from this one.', ego.exitAction, ego.exitConfirm)}
                 ${withActionSwitch(`${p}.withAction`, ego.withAction)}
+                <div class="evo-row">${sw(`${p}.disguise`, !!ego.disguise, 'Disguise / Separate Scene Identity')}
+                    <span class="evo-hint">When on, the prompt instructs the scene to treat this Alter Ego as a separate identity/disguise and marks its messages with a Disguise badge.</span></div>
                 <div class="evo-row"><span class="evo-label">Prompt Name</span><input class="cl-input" data-path="${p}.promptName" data-kind="nullable" value="${esc(ego.promptName)}" placeholder="${esc(owner.name)}">
                     <span class="evo-hint">What the prompt says ${esc(owner.name)} is going by while this Alter Ego is active.</span></div>
                 <div class="evo-row"><span class="evo-label">Name on messages</span><input class="cl-input" data-path="${p}.displayName" data-kind="nullable" value="${esc(ego.displayName)}" placeholder="${esc(owner.name)}"></div>
@@ -248,6 +267,12 @@ export function mountEditor(pane, owner, ctx, { bigEditor }) {
 
     pane.addEventListener('input', (e) => {
         if (e.target.matches?.('textarea.evo-keywords')) fit(e.target);
+        if (e.target.dataset?.act === 'avatar-url' && def) {
+            const url = e.target.value.trim();
+            def.alterEgos[egoIndex].avatar = url ? { url } : null;
+            markDirty();
+            return;
+        }
         const path = e.target.dataset?.path;
         if (!path || !def) return;
         const t = e.target, kind = t.dataset.kind;
@@ -354,13 +379,14 @@ export function mountEditor(pane, owner, ctx, { bigEditor }) {
             saved = JSON.stringify(def);
             markDirty();
             CoreAPI.showToast('Evolutia saved', 'success');
+            onChanged?.();
         } catch (e) { CoreAPI.showToast(`Could not save: ${e.message}`, 'error'); }
     }
 
     // The full-screen editor: the box's text in the app's own expanded-field look; Apply puts it back in the box.
     function expand(path, label) {
         const box = pane.querySelector(`textarea[data-path="${CSS.escape(path)}"]`);
-        if (!box) return;
+        if (!box || !bigEditor) return;
         const body = bigEditor.open({ title: label });
         body.classList.add('expand-field-body');
         body.innerHTML = `
@@ -392,9 +418,10 @@ export function mountEditor(pane, owner, ctx, { bigEditor }) {
             await owner.setOn(want, def, rebuilt);
             CoreAPI.showToast(want ? `Evolutia is on: the ${owner.descLabel} is now ${owner.macro}` : `Evolutia is off: the ${owner.descLabel} is back`, 'success');
             await load();
+            onChanged?.();
         } catch (e) { CoreAPI.showToast(`Could not switch Evolutia: ${e.message}`, 'error'); render(); }
     }
 
     load();
-    return { dirty };
+    return { dirty, reload: load };
 }

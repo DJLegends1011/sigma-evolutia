@@ -1,7 +1,7 @@
 // Evolutia, the server half: Field Definitions on the card (and, for the Persona Side, in Evolutia's own table),
 // {{evolutia}} and {{evolutia_persona}} in place of the descriptions, and Field State worked out from the chat's
 // messages each time a prompt is built (ADR 0004).
-import { deriveTimeline, promptFor, identityFor } from '../client/core/evolve.js';
+import { deriveTimeline, promptFor, identityFor, badgeFor, stripTriggeredMessage } from '../client/core/evolve.js';
 import { switchPatch, definitionFromDescription } from '../client/core/definition.js';
 const CARDS = 'x_evolutia_cards';
 const PERSONAS = 'x_evolutia_personas';
@@ -72,10 +72,13 @@ export function register(router, ctx) {
 
     // The definitions in play for a chat: the card's and the chat's persona's, each only while switched on.
     function sides(db, chatId, charId) {
-        const ev = charId ? evolutiaOf(db, charId) : null;
+        const resolvedCharId = charId || (chatId ? db.prepare('SELECT char_id FROM chats WHERE id = ?').get(chatId)?.char_id : null);
+        const ev = resolvedCharId ? evolutiaOf(db, resolvedCharId) : null;
         const persona = chatPersona(db, chatId);
         const pr = personaRow(db, persona?.id);
         return {
+            charId: resolvedCharId || null,
+            personaMeta: persona ? { id: persona.id, name: persona.name, on: pr.on } : null,
             char: ev?.on && ev.definition ? ev.definition : null,
             persona: pr.on && pr.definition ? { ...persona, definition: pr.definition } : null,
         };
@@ -107,6 +110,55 @@ export function register(router, ctx) {
         depth: 0,
         role: 'system',
         text: ({ db, chatId, charId, lastSeq }) => promptNow(db, chatId, charId, lastSeq)?.actionBlock ?? '',
+    });
+
+    // Strip matched trigger keywords when stripTriggers is enabled on a Field or Alter Ego,
+    // recording the equivalent Manual Switch on that message so deriveTimeline still sees the transition.
+    ctx.hooks.add('store.before.message.created', (rec, { db }) => {
+        const chatId = rec.chatId;
+        const seqs = Array.isArray(rec.ids) ? rec.ids : [];
+        if (!chatId || !seqs.length) return;
+        const s = sides(db, chatId, null);
+        if (!s.char && !s.persona) return;
+
+        for (const seq of seqs) {
+            const row = db.prepare('SELECT id, data FROM chat_messages WHERE chat_id = ? AND seq = ?').get(chatId, seq);
+            if (!row) continue;
+            let msg;
+            try { msg = JSON.parse(row.data); } catch { continue; }
+            if (!msg || msg.is_system || !msg.mes) continue;
+
+            const hBefore = history(db, chatId, seq - 1);
+            if (!hBefore) continue;
+            const role = msg.is_user ? 'user' : 'char';
+            let text = String(msg.mes);
+            const addedManual = [];
+
+            if (s.char) {
+                const cRun = run(db, hBefore, s.char, 'char');
+                const res = stripTriggeredMessage(s.char, cRun.timeline.at(-1), role, text, 'char');
+                text = res.text;
+                addedManual.push(...res.manual);
+            }
+            if (s.persona) {
+                const pRun = run(db, hBefore, s.persona.definition, 'persona');
+                const res = stripTriggeredMessage(s.persona.definition, pRun.timeline.at(-1), role, text, 'persona');
+                text = res.text;
+                addedManual.push(...res.manual);
+            }
+
+            if (addedManual.length && text !== msg.mes) {
+                msg.mes = text;
+                if (Array.isArray(msg.swipes) && msg.swipes.length) {
+                    const sIdx = Math.min(Math.max(Number(msg.swipe_id) || 0, 0), msg.swipes.length - 1);
+                    msg.swipes[sIdx] = text;
+                }
+                const existingManual = msg.extra?.evolutia?.manual || [];
+                msg.extra = (msg.extra && typeof msg.extra === 'object' && !Array.isArray(msg.extra)) ? { ...msg.extra } : {};
+                msg.extra.evolutia = { ...(msg.extra.evolutia || {}), manual: [...existingManual, ...addedManual] };
+                db.prepare('UPDATE chat_messages SET data = ? WHERE chat_id = ? AND seq = ?').run(JSON.stringify(msg), chatId, seq);
+            }
+        }
     });
 
     // ---- the Persona Side's routes
@@ -181,8 +233,14 @@ export function register(router, ctx) {
             const inPrompt = new Map(said.rows.map(r => [`${r.ego}/${r.id}`, r.inPrompt]));
             const writer = side === 'persona' ? 'user' : 'char';
             const identities = {};
-            messages.forEach((m, i) => { if (m.role === writer) identities[h.seqs[i]] = identityFor(definition, timeline, i, opts); });
-            const egoView = (e) => ({ id: e.id, name: e.name });
+            const badges = {};
+            messages.forEach((m, i) => {
+                if (m.role !== writer) return;
+                identities[h.seqs[i]] = identityFor(definition, timeline, i, opts);
+                const b = badgeFor(definition, timeline, i);
+                if (b) badges[h.seqs[i]] = b;
+            });
+            const egoView = (e) => ({ id: e.id, name: e.name, avatar: e.avatar || null, disguise: !!e.disguise });
             return {
                 ego: egoView(definition.alterEgos.find(e => e.id === now.ego)),
                 egoMove: now.egoMove ? egoView(definition.alterEgos.find(e => e.id === now.egoMove.to)) : null,
@@ -193,10 +251,13 @@ export function register(router, ctx) {
                 evolutia: h.expand(said.evolutia),
                 actionBlock: h.expand(said.actionBlock),
                 identities,
+                badges,
             };
         };
         return res.json({
             on: !!s.char,
+            charId: s.charId,
+            personaMeta: s.personaMeta,
             ...(s.char ? view(s.char, 'char') : {}),
             persona: s.persona ? { id: s.persona.id, name: s.persona.name, ...view(s.persona.definition, 'persona') } : null,
         });
@@ -226,6 +287,38 @@ export function register(router, ctx) {
         const fields = switchPatch(c.card.data, on);
         if (fields) chars.patchCharacter(req.db, req.params.id, { fields });
         return res.json({ on });
+    });
+
+    // Direct avatar upload & serving for Persona / Custom Alter Ego portraits
+    router.post('/avatars', (req, res) => {
+        try {
+            const { filename = 'avatar.png', dataUrl = '' } = req.body || {};
+            const match = String(dataUrl).match(/^data:image\/(png|jpeg|jpg|webp|gif);base64,(.+)$/i);
+            if (!match) return res.status(400).json({ error: 'Invalid image dataUrl' });
+            const ext = match[1].toLowerCase() === 'jpeg' ? 'jpg' : match[1].toLowerCase();
+            const safeBase = String(filename).replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 32) || 'ego';
+            const storedName = `${safeBase}-${Date.now()}.${ext}`;
+            const buf = Buffer.from(match[2], 'base64');
+            ctx.files.user(req).write(storedName, buf);
+            res.json({
+                ok: true,
+                file: storedName,
+                avatar: { upload: storedName },
+                url: `/api/ext/evolutia/avatars/${encodeURIComponent(storedName)}`,
+            });
+        } catch (err) {
+            res.status(400).json({ error: err.message });
+        }
+    });
+
+    router.get('/avatars/:file', (req, res) => {
+        try {
+            const file = String(req.params.file || '').replace(/[^a-zA-Z0-9._-]/g, '');
+            const fullPath = ctx.files.user(req).path(file);
+            res.sendFile(fullPath);
+        } catch {
+            res.status(404).end();
+        }
     });
 
     // The badge's table follows every write to a card, whoever made it.

@@ -21,6 +21,61 @@ export function triggerMatches(trigger, text) {
     return trigger.mode === 'ALL' ? trigger.keywords.every(hit) : trigger.keywords.some(hit);
 }
 
+function stripKeywordFromText(keyword, text) {
+    const kw = keyword.trim();
+    if (!kw || !text) return text;
+    const re = kw.match(/^\/(.+)\/([a-z]*)$/);
+    if (re) {
+        try {
+            let flags = re[2] || '';
+            if (!flags.includes('i')) flags += 'i';
+            if (!flags.includes('g')) flags += 'g';
+            return text.replace(new RegExp(re[1], flags), '');
+        } catch { return text; }
+    }
+    const pattern = new RegExp(`(^|[^\\p{L}\\p{N}_])(${escRe(kw)})(?=$|[^\\p{L}\\p{N}_])`, 'giu');
+    return text.replace(pattern, '$1');
+}
+
+export function stripTriggerKeywords(trigger, text) {
+    let out = String(text ?? '');
+    for (const kw of trigger?.keywords || []) {
+        out = stripKeywordFromText(kw, out);
+    }
+    return out.replace(/[ \t]{2,}/g, ' ').trim();
+}
+
+// Checks whether a message triggers any stripTriggers-enabled Field or Alter Ego on this side;
+// returns the stripped text and the equivalent Manual Switches so deriveTimeline still sees the transition.
+export function stripTriggeredMessage(def, st, role, text, side = 'char') {
+    if (!def || !st || !text) return { text, manual: [] };
+    let nextText = String(text);
+    const manual = [];
+    const sideTag = side === 'persona' ? { side: 'persona' } : {};
+    const ego = egoById(def, st.ego);
+    if (ego) {
+        for (const f of ego.fields) {
+            if (!f.stripTriggers || !f.sources?.[role]) continue;
+            if (triggerMatches(f.disabling, nextText)) {
+                nextText = stripTriggerKeywords(f.disabling, nextText) || nextText;
+                manual.push({ kind: 'field', ego: ego.id, id: f.id, on: false, ...sideTag });
+            } else if (triggerMatches(f.enabling, nextText)) {
+                nextText = stripTriggerKeywords(f.enabling, nextText) || nextText;
+                manual.push({ kind: 'field', ego: ego.id, id: f.id, on: true, ...sideTag });
+            }
+        }
+    }
+    for (const other of def.alterEgos) {
+        if (other.id === st.ego || other.id === st.egoMove?.to) continue;
+        if (other.stripTriggers && other.entrySources?.[role] && triggerMatches(other.entry, nextText)) {
+            nextText = stripTriggerKeywords(other.entry, nextText) || nextText;
+            manual.push({ kind: 'ego', id: other.id, ...sideTag });
+            break;
+        }
+    }
+    return { text: nextText, manual };
+}
+
 // The last n messages ending at message end, keeping only the Trigger Sources asked for.
 function windowText(messages, end, n, sources) {
     const out = [];
@@ -125,7 +180,12 @@ export function promptFor(def, messages, timeline, k, opts) {
     // an Alter Ego change already in effect for the reply narrating it shows the new Alter Ego
     const ego = to && withAction(to) ? to : from;
     const parts = [], actions = [], rows = [];
-    if (ego.promptName) parts.push(`${opts.charName} is currently going by: ${ego.promptName}.`);
+    if (ego.disguise) {
+        const asName = ego.promptName || ego.displayName || ego.name;
+        parts.push(`${opts.charName} is currently disguised / presenting in-scene as: ${asName}. Stay consistent with ${asName}'s identity, appearance, and voice in the scene.`);
+    } else if (ego.promptName) {
+        parts.push(`${opts.charName} is currently going by: ${ego.promptName}.`);
+    }
     for (const f of ego.fields) {
         const phase = st.fields[ego.id][f.id].phase;
         const gated = f.activating.keywords.length > 0;
@@ -152,4 +212,24 @@ export function promptFor(def, messages, timeline, k, opts) {
 export function identityFor(def, timeline, i, opts) {
     const ego = egoById(def, timeline[i].ego);
     return { name: ego.displayName || opts.charName, avatar: ego.avatar || null };
+}
+
+// Optional header badge for message i: shown when a non-default or disguise Alter Ego is active,
+// or when non-default Fields (startsOn === false) have been switched on.
+export function badgeFor(def, timeline, i) {
+    const st = timeline[i];
+    if (!st) return null;
+    const ego = egoById(def, st.ego);
+    if (!ego) return null;
+    const isAltEgo = ego.id !== def.alterEgos[0]?.id;
+    const disguise = !!ego.disguise;
+    const extraFields = ego.fields
+        .filter(f => !f.startsOn && st.fields[ego.id]?.[f.id]?.phase === 'on')
+        .map(f => f.name);
+    if (!isAltEgo && !disguise && !extraFields.length) return null;
+    const parts = [];
+    if (disguise) parts.push('Disguise');
+    else if (isAltEgo) parts.push(ego.name);
+    if (extraFields.length) parts.push(...extraFields.slice(0, 2));
+    return { text: parts.join(' · '), disguise };
 }
