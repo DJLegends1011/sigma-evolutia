@@ -200,3 +200,11 @@ test('a change never confirmed is undone with its content, Content With Action o
     assert.equal(never.evolutia, '');
     assert.equal(never.actionBlock, '');
 });
+
+test('a skipped Manual Switch on the greeting starts the chat as that Alter Ego: the first message already shows it', () => {
+    const chat = [kael('Hello, traveller.', [{ kind: 'ego', id: 'wolf', skip: true }]), you('Easy, boy.')];
+    const timeline = deriveTimeline(wolfDef(), chat, OPTS);
+    assert.deepEqual(identityFor(wolfDef(), timeline, 1, OPTS), { name: 'Werewolf Kael', avatar: null });
+    assert.equal(promptFor(wolfDef(), chat, timeline, 1, OPTS).evolutia, 'Kael is currently going by: the Werewolf.\n\n## Form\nA huge black wolf.');
+    assert.equal(promptFor(wolfDef(), chat, timeline, 1, OPTS).actionBlock, '');
+});
