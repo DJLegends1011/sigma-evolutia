@@ -1,9 +1,7 @@
 // Evolutia, the server half: Field Definitions on the card, {{evolutia}} in place of the Description,
 // and Field State worked out from the chat's messages each time a prompt is built (ADR 0004).
 import { deriveTimeline, promptFor, identityFor } from '../client/core/evolve.js';
-import { definitionFromDescription } from '../client/core/definition.js';
-
-const MACRO = '{{evolutia}}';
+import { switchPatch } from '../client/core/definition.js';
 const CARDS = 'x_evolutia_cards';
 
 // append-only; which cards have Evolutia on, so list rows can carry it (the card badge)
@@ -67,7 +65,7 @@ export function register(router, ctx) {
         const c = chars.getCharacter(req.db, req.params.id);
         if (!c) return res.status(404).json({ error: 'no such character' });
         const ev = c.card.data.extensions?.evolutia || {};
-        return res.json({ on: !!ev.on, definition: ev.definition || null, description: c.card.data.description ?? '' });
+        return res.json({ on: !!ev.on, definition: ev.definition || null, card: { description: c.card.data.description ?? '', extensions: { evolutia: ev } } });
     });
 
     router.put('/characters/:id/definition', (req, res) => {
@@ -125,22 +123,34 @@ export function register(router, ctx) {
     });
 
     // On: the Description becomes {{evolutia}}, the Original Description kept. Off: it comes back.
+    // (The Evolutia tab makes the same write through the app's own character.update.)
     router.put('/characters/:id/on', (req, res) => {
         const c = chars.getCharacter(req.db, req.params.id);
         if (!c) return res.status(404).json({ error: 'no such character' });
-        const ev = c.card.data.extensions?.evolutia || {};
         const on = !!req.body?.on;
-        if (on === !!ev.on) return res.json({ on });
-        const description = c.card.data.description ?? '';
-        const fields = on
-            ? {
-                description: MACRO, 'extensions.evolutia.on': true, 'extensions.evolutia.originalDescription': description,
-                ...(ev.definition ? {} : { 'extensions.evolutia.definition': definitionFromDescription(description) }),
-            }
-            : { description: ev.originalDescription ?? '', 'extensions.evolutia.on': false, 'extensions.evolutia.originalDescription': null };
-        chars.patchCharacter(req.db, req.params.id, { fields });
-        req.db.prepare(`INSERT INTO ${CARDS} (char_id, enabled) VALUES (?, ?) ON CONFLICT(char_id) DO UPDATE SET enabled = excluded.enabled`)
-            .run(req.params.id, on ? 1 : 0);
+        const fields = switchPatch(c.card.data, on);
+        if (fields) chars.patchCharacter(req.db, req.params.id, { fields });
         return res.json({ on });
+    });
+
+    // The badge's table follows every write to a card, whoever made it.
+    ctx.events.on((records, { db }) => {
+        const ids = new Set(records.filter(r => r.entity === 'character' && (r.op === 'created' || r.op === 'updated') && !r.extension)
+            .flatMap(r => r.ids || []).map(String));
+        if (!ids.size) return;
+        const changed = [];
+        const read = db.prepare(`SELECT enabled FROM ${CARDS} WHERE char_id = ?`);
+        const write = db.prepare(`INSERT INTO ${CARDS} (char_id, enabled) VALUES (?, ?) ON CONFLICT(char_id) DO UPDATE SET enabled = excluded.enabled`);
+        db.transaction(() => {
+            for (const id of ids) {
+                const c = chars.getCharacter(db, id);
+                if (!c) continue;
+                const on = c.card.data.extensions?.evolutia?.on ? 1 : 0;
+                if ((read.get(id)?.enabled ?? 0) === on) continue;
+                write.run(id, on);
+                changed.push(id);
+            }
+            if (changed.length) ctx.report(db, { entity: 'character', op: 'updated', ids: changed, fields: ['evolutia.on'] });
+        })();
     });
 }

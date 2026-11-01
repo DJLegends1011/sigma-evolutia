@@ -1,5 +1,5 @@
 // The Evolutia tab in a character's details: switching Evolutia on, and editing Alter Egos and their Fields.
-import { blankField, blankAlterEgo, idFor } from './core/definition.js';
+import { blankField, idFor, switchPatch } from './core/definition.js';
 
 // Keywords as typed: one per line or comma-separated; a /regex/ keeps its own line whole.
 export function parseKeywords(text) {
@@ -24,7 +24,7 @@ export function mountEditor(pane, character, ctx) {
     const esc = (s) => CoreAPI.escapeHtml(String(s ?? ''));
     const call = ctx.server.call;
     const charId = character.id;
-    let on = false, def = null, saved = '', egoIndex = 0, gallery = null;
+    let on = false, def = null, card = null, saved = '', egoIndex = 0, gallery = null;
 
     const dirty = () => JSON.stringify(def) !== saved;
 
@@ -34,6 +34,7 @@ export function mountEditor(pane, character, ctx) {
             const got = await call(`/characters/${encodeURIComponent(charId)}`);
             on = got.on;
             def = got.definition;
+            card = got.card;
             saved = JSON.stringify(def);
             egoIndex = 0;
             render();
@@ -304,9 +305,15 @@ export function mountEditor(pane, character, ctx) {
         } catch (e) { CoreAPI.showToast(`Could not upload the picture: ${e.message}`, 'error'); }
     }
 
+    // Card writes go through the app's own character.update, so the details know the edit for their own.
+    const update = async (fields) => {
+        const done = await ctx.commands.run('character.update', { id: charId, fields, source: 'evolutia' });
+        if (done?.ok === false) throw new Error('the card write was refused');
+    };
+
     async function save() {
         try {
-            await call(`/characters/${encodeURIComponent(charId)}/definition`, 'PUT', { definition: def });
+            await update({ 'extensions.evolutia.definition': def });
             saved = JSON.stringify(def);
             markDirty();
             CoreAPI.showToast('Evolutia saved', 'success');
@@ -317,7 +324,8 @@ export function mountEditor(pane, character, ctx) {
         if (!want && dirty() && !confirm('Switch Evolutia off? Your unsaved changes are saved first.')) { render(); return; }
         try {
             if (dirty()) await save();
-            await call(`/characters/${encodeURIComponent(charId)}/on`, 'PUT', { on: want });
+            const fields = switchPatch({ ...card, extensions: { evolutia: { ...card.extensions.evolutia, definition: def } } }, want);
+            if (fields) await update(fields);
             CoreAPI.showToast(want ? 'Evolutia is on: the Description is now {{evolutia}}' : 'Evolutia is off: the Description is back', 'success');
             await load();
         } catch (e) { CoreAPI.showToast(`Could not switch Evolutia: ${e.message}`, 'error'); render(); }

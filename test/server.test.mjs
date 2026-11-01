@@ -125,3 +125,12 @@ test('a card\'s own settings override the global ones', async () => {
     await setChat(chatId, [said('Hello.'), you('Kael, what are you?')]);
     assert.match(await prompt(chatId), /NOW: Kael confesses that he is a werewolf\./);
 });
+
+test('the badge follows a card switched through the app\'s own card write, as the Evolutia tab does it', async () => {
+    const { id } = await kael(secret());
+    const row = async () => (await me.api(`/characters?count=false&ids=${id}`)).body.items[0];
+    assert.equal((await me.api(`/characters/${id}`, 'PATCH', { fields: { 'extensions.evolutia.on': true } })).status, 200);
+    assert.equal((await row()).ext?.evolutia?.on, 1);
+    await me.api(`/characters/${id}`, 'PATCH', { fields: { 'extensions.evolutia.on': false } });
+    assert.equal((await row()).ext?.evolutia?.on ?? 0, 0);
+});

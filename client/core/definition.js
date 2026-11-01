@@ -48,3 +48,21 @@ export function definitionFromDescription(description) {
         .map(s => blankField(idFor(s.name, taken), sections.length === 1 ? 'Description' : s.name, s.content));
     return { alterEgos: [blankAlterEgo('main', 'Main', fields)] };
 }
+
+export const MACRO = '{{evolutia}}';
+
+// The card write that switches Evolutia on or off (ADR 0003), as Sigma's character.update takes it: on, the
+// Description becomes {{evolutia}} and the Original Description is kept (with a first set of Fields read from
+// it when the card has none); off, the Original Description comes back. Null when there is nothing to change.
+export function switchPatch(cardData, on) {
+    const ev = cardData.extensions?.evolutia || {};
+    if (on === !!ev.on) return null;
+    if (!on) return { description: ev.originalDescription ?? '', 'extensions.evolutia.on': false, 'extensions.evolutia.originalDescription': null };
+    const description = cardData.description ?? '';
+    return {
+        description: MACRO,
+        'extensions.evolutia.on': true,
+        'extensions.evolutia.originalDescription': description,
+        ...(ev.definition ? {} : { 'extensions.evolutia.definition': definitionFromDescription(description) }),
+    };
+}
