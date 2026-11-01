@@ -4,8 +4,22 @@
     "version": "0.1.0",
     "author": "DJLegends1011",
     "description": "Lets a character's definition change as the story unfolds: split the Description into Fields that Triggers switch on and off, with Entry and Exit Actions and whole Alter Egos. Each chat keeps its own state, worked out from its messages. Reimagined from Genisai's Aspect: Evolutia for SillyTavern, with his permission.",
-    "requires": { "api": 2 },
+    "requires": {
+        "api": 2
+    },
     "defaultOff": true,
+    "contributes": [
+        "character.card.badge",
+        "character.details.tab",
+        "chat.window",
+        "chat.action"
+    ],
+    "client": "client/index.js",
+    "style": "client/style.css",
     "server": "server/index.js",
-    "settings": { "window": 1, "tries": 2, "template": "In your next reply, make this happen: {{action}}" }
+    "settings": {
+        "window": 1,
+        "tries": 2,
+        "template": "In your next reply, make this happen: {{action}}"
+    }
 }

@@ -117,3 +117,11 @@ test('the chat state reports each Field, the active Alter Ego, the pending Actio
     assert.deepEqual(state.identities[seqs[2]], { name: 'Kael', avatar: null });
     assert.deepEqual(state.identities[seqs[3]], { name: 'Werewolf Kael', avatar: { media: 7 } });
 });
+
+test('a card\'s own settings override the global ones', async () => {
+    const def = { ...secret(), settings: { template: 'NOW: {{action}}' } };
+    const { id, chatId } = await kael(def);
+    await evolutia(`/characters/${id}/on`, 'PUT', { on: true });
+    await setChat(chatId, [said('Hello.'), you('Kael, what are you?')]);
+    assert.match(await prompt(chatId), /NOW: Kael confesses that he is a werewolf\./);
+});

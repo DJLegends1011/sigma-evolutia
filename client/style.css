@@ -1,0 +1,65 @@
+/* Evolutia: layout only; materials and controls are the app's own tokens. */
+
+.evo-editor, .evo-panel { display: flex; flex-direction: column; gap: var(--space-sm); }
+.evo-muted, .evo-hint { color: var(--text-muted); font-size: var(--font-xs); }
+.evo-error { color: var(--cl-danger, var(--cl-warning)); }
+.evo-label { color: var(--text-secondary); font-size: var(--font-xs); font-weight: 600; }
+.evo-sub { margin-top: var(--space-2xs); font-weight: 500; }
+.evo-head { display: flex; flex-direction: column; gap: var(--space-2xs); }
+.evo-switch { display: inline-flex; align-items: center; gap: var(--space-xs); cursor: pointer; }
+.evo-row, .evo-trigger, .evo-action { display: flex; flex-direction: column; gap: var(--space-2xs); }
+.evo-trigger-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-xs); }
+.evo-mode { max-width: 10rem; }
+.evo-content { min-height: 6rem; }
+.evo-keywords { min-height: 2.2rem; }
+.evo-num { max-width: 6rem; }
+.evo-reads { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-sm); font-size: var(--font-sm); }
+.evo-reads label { display: inline-flex; align-items: center; gap: var(--space-2xs); }
+.evo-buttons { display: flex; flex-wrap: wrap; gap: var(--space-xs); }
+.evo-danger { color: var(--cl-danger, var(--cl-warning)); }
+.evo-section { margin: var(--space-sm) 0 0; font-size: var(--font-sm); }
+
+.evo-save { display: flex; align-items: center; gap: var(--space-xs); position: sticky; top: 0; z-index: 1;
+    padding: var(--space-xs); border-radius: var(--radius-md); background: var(--cl-ghost-faint); }
+.evo-save .evo-hint { flex: 1; }
+.evo-save.is-dirty { background: var(--cl-accent-tint); border: 1px solid var(--cl-accent-tint-border); }
+
+.evo-egos { display: flex; flex-wrap: wrap; gap: var(--space-2xs); }
+.evo-chip { display: inline-flex; align-items: center; gap: var(--space-2xs); padding: var(--space-2xs) var(--space-sm);
+    border-radius: var(--radius-pill); border: 1px solid var(--cl-ghost-mid); background: var(--cl-ghost-faint);
+    color: var(--text-secondary); font-size: var(--font-xs); cursor: pointer; }
+.evo-chip.is-on { background: var(--cl-accent-tint); border-color: var(--cl-accent-tint-border); color: var(--text-primary); }
+
+.evo-field, .evo-ego { border: 1px solid var(--cl-ghost-mid); border-radius: var(--radius-md); background: var(--cl-ghost-faint); }
+.evo-field > summary, .evo-ego > summary { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-xs);
+    padding: var(--space-xs) var(--space-sm); cursor: pointer; font-size: var(--font-sm); }
+.evo-field-name { font-weight: 600; color: var(--text-primary); }
+.evo-field-body { display: flex; flex-direction: column; gap: var(--space-sm); padding: 0 var(--space-sm) var(--space-sm); }
+
+.evo-pill { font-size: var(--font-xs); padding: 0 var(--space-xs); border-radius: var(--radius-pill);
+    background: var(--cl-ghost-mid); color: var(--text-secondary); }
+.evo-pill.evo-on { background: var(--cl-accent-tint); color: var(--text-primary); }
+.evo-pill.evo-entering, .evo-pill.evo-exiting { border: 1px dashed var(--cl-accent-tint-border); color: var(--text-primary); }
+
+.evo-avatar-row { display: flex; align-items: center; gap: var(--space-sm); flex-wrap: wrap; }
+.evo-avatar { width: 48px; height: 48px; border-radius: 50%; object-fit: cover; flex: none; }
+.evo-avatar-own { display: inline-flex; align-items: center; justify-content: center; background: var(--cl-ghost-mid); color: var(--text-muted); }
+.evo-upload { cursor: pointer; }
+.evo-gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(56px, 1fr)); gap: var(--space-2xs); }
+.evo-gallery-pick { padding: 0; border: 2px solid transparent; border-radius: var(--radius-sm); background: none; cursor: pointer; aspect-ratio: 1; }
+.evo-gallery-pick img { width: 100%; height: 100%; object-fit: cover; border-radius: var(--radius-sm); }
+.evo-gallery-pick.is-on { border-color: var(--cl-accent-tint-border); }
+
+.evo-now { display: flex; align-items: baseline; flex-wrap: wrap; gap: var(--space-xs); }
+.evo-panel-ego { display: flex; flex-direction: column; gap: var(--space-2xs); padding: var(--space-xs);
+    border-radius: var(--radius-md); border: 1px solid var(--cl-ghost-mid); }
+.evo-panel-ego.is-active { border-color: var(--cl-accent-tint-border); background: var(--cl-accent-tint); }
+.evo-panel-ego-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-xs); font-weight: 600; font-size: var(--font-sm); }
+.evo-panel-field { display: flex; align-items: center; gap: var(--space-xs); font-size: var(--font-sm); }
+.evo-panel-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.evo-in { color: var(--text-primary); }
+.evo-small { padding: var(--space-2xs) var(--space-xs); font-size: var(--font-xs); }
+.evo-preview > summary { cursor: pointer; font-size: var(--font-sm); }
+.evo-preview pre { white-space: pre-wrap; font-size: var(--font-xs); background: var(--cl-ghost-faint);
+    padding: var(--space-xs); border-radius: var(--radius-sm); margin: var(--space-2xs) 0 var(--space-sm); }
+.evo-picker { display: flex; flex-direction: column; gap: var(--space-xs); padding: var(--space-sm); }

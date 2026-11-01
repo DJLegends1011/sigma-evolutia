@@ -18,12 +18,12 @@ export function register(router, ctx) {
     ctx.query.projection({ key: 'on', table: CARDS, column: 'enabled' });
     const evolutiaOf = (db, charId) => chars.getCharacter(db, charId)?.card.data.extensions?.evolutia || null;
 
-    const options = (db, charName) => ({
-        charName,
-        window: Number(ctx.setting(db, 'window')) || 1,
-        tries: Number(ctx.setting(db, 'tries')) || 2,
-        template: ctx.setting(db, 'template'),
-    });
+    // the card's own settings (Q24), else the account's
+    const options = (db, charName, ev) => {
+        const own = ev.definition?.settings || {};
+        const pick = (key) => (own[key] ?? '') !== '' ? own[key] : ctx.setting(db, key);
+        return { charName, window: Number(pick('window')) || 1, tries: Number(pick('tries')) || 2, template: String(pick('template')) };
+    };
 
     // The chat's messages up to lastSeq, as the core reads them.
     function history(db, chatId, lastSeq) {
@@ -45,7 +45,7 @@ export function register(router, ctx) {
         if (!ev?.on || !ev.definition) return null;
         const h = history(db, chatId, lastSeq);
         if (!h) return null;
-        const opts = options(db, h.charName);
+        const opts = options(db, h.charName, ev);
         const timeline = deriveTimeline(ev.definition, h.messages, opts);
         const said = promptFor(ev.definition, h.messages, timeline, h.messages.length - 1, opts);
         // a macro's answer is not expanded again, so Fields and Actions get the chat's macros ({{user}}, ...) here
@@ -88,7 +88,7 @@ export function register(router, ctx) {
         if (!ev?.on || !ev.definition) return res.json({ on: false });
         const chat = ctx.prompt.read(db, chatId);
         const h = history(db, chatId, null);
-        const opts = options(db, h.charName);
+        const opts = options(db, h.charName, ev);
         const timeline = deriveTimeline(ev.definition, h.messages, opts);
         const now = timeline.at(-1);
         const said = promptFor(ev.definition, h.messages, timeline, h.messages.length - 1, opts);
