@@ -198,6 +198,15 @@ export function mountEditor(pane, character, ctx) {
             </div>`;
         // the app's own dropdowns: a bare <select> keeps the browser's look
         for (const select of pane.querySelectorAll('select')) CoreAPI.initCustomSelect(select);
+        for (const box of pane.querySelectorAll('textarea')) fit(box);
+    }
+
+    // A text box as tall as its text (where the browser has no field-sizing), so it never scrolls inside.
+    const sizesItself = typeof CSS !== 'undefined' && CSS.supports?.('field-sizing', 'content');
+    function fit(box) {
+        if (sizesItself) return;
+        box.style.height = 'auto';
+        box.style.height = `${box.scrollHeight + 2}px`;
     }
 
     // Re-render, keeping the open Fields open and the scroll where it was.
@@ -219,6 +228,7 @@ export function mountEditor(pane, character, ctx) {
     // ---- edits
 
     pane.addEventListener('input', (e) => {
+        if (e.target.tagName === 'TEXTAREA') fit(e.target);
         const path = e.target.dataset?.path;
         if (!path || !def) return;
         const t = e.target, kind = t.dataset.kind;
@@ -236,6 +246,10 @@ export function mountEditor(pane, character, ctx) {
         }
         markDirty();
     });
+
+    pane.addEventListener('toggle', (e) => {
+        if (e.target.open) for (const box of e.target.querySelectorAll('textarea')) fit(box);
+    }, true);
 
     pane.addEventListener('change', async (e) => {
         if (e.target.dataset?.act === 'toggle') await toggle(e.target.checked);

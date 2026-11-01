@@ -63,3 +63,7 @@
 .evo-preview pre { white-space: pre-wrap; font-size: var(--font-xs); background: var(--cl-ghost-faint);
     padding: var(--space-xs); border-radius: var(--radius-sm); margin: var(--space-2xs) 0 var(--space-sm); }
 .evo-picker { display: flex; flex-direction: column; gap: var(--space-xs); padding: var(--space-sm); }
+
+/* Text boxes grow to their text and never scroll inside, so a swipe on a phone scrolls the tab, not the box. */
+.evo-editor textarea { field-sizing: content; overflow: hidden; resize: none; min-height: 2.6rem; }
+.evo-editor .evo-content { min-height: 6rem; }
