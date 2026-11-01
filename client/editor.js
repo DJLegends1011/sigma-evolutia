@@ -173,6 +173,15 @@ export function mountEditor(pane, character, ctx, { bigEditor }) {
         </details>`;
     }
 
+    // Save and Revert, above the editor and again below it: the details scroll as one page, and a bar pinned
+    // to it would fight the tab strip and a header that slides away.
+    const saveBarHtml = () => `
+        <div class="evo-save ${dirty() ? 'is-dirty' : ''}">
+            <span class="evo-hint">${dirty() ? 'Unsaved changes' : 'Saved'}</span>
+            <button type="button" class="cl-btn cl-btn-secondary" data-act="revert" ${dirty() ? '' : 'disabled'}>Revert</button>
+            <button type="button" class="cl-btn" data-act="save" ${dirty() ? '' : 'disabled'}><i class="fa-solid fa-floppy-disk"></i> Save</button>
+        </div>`;
+
     function render() {
         const head = `
             <div class="evo-head">
@@ -185,6 +194,7 @@ export function mountEditor(pane, character, ctx, { bigEditor }) {
         pane.innerHTML = `
             <div class="evo-editor">
                 ${head}
+                ${saveBarHtml()}
                 <div class="evo-egos">
                     ${def.alterEgos.map((e, i) => `<button type="button" class="evo-chip ${i === egoIndex ? 'is-on' : ''}" data-act="ego" data-ego="${i}">${esc(e.name || 'Untitled')}</button>`).join('')}
                     <button type="button" class="evo-chip" data-act="add-ego" title="New Alter Ego, copied from this one"><i class="fa-solid fa-plus"></i> Alter Ego</button>
@@ -197,11 +207,7 @@ export function mountEditor(pane, character, ctx, { bigEditor }) {
                 ${ego.fields.map((f, i) => fieldHtml(f, i, ego.fields.length)).join('') || '<p class="evo-hint">No Fields yet.</p>'}
                 <button type="button" class="cl-btn cl-btn-secondary" data-act="add-field"><i class="fa-solid fa-plus"></i> Field</button>
                 ${settingsHtml()}
-                <div class="evo-save ${dirty() ? 'is-dirty' : ''}">
-                    <span class="evo-hint">${dirty() ? 'Unsaved changes' : 'Saved'}</span>
-                    <button type="button" class="cl-btn cl-btn-secondary" data-act="revert" ${dirty() ? '' : 'disabled'}>Revert</button>
-                    <button type="button" class="cl-btn" data-act="save" ${dirty() ? '' : 'disabled'}><i class="fa-solid fa-floppy-disk"></i> Save</button>
-                </div>
+                ${saveBarHtml()}
             </div>`;
         // the app's own dropdowns: a bare <select> keeps the browser's look
         for (const select of pane.querySelectorAll('select')) CoreAPI.initCustomSelect(select);
@@ -225,11 +231,11 @@ export function mountEditor(pane, character, ctx, { bigEditor }) {
         pane.scrollTop = top;
     }
     const markDirty = () => {
-        const bar = pane.querySelector('.evo-save');
-        if (!bar) return;
-        bar.classList.toggle('is-dirty', dirty());
-        bar.querySelector('.evo-hint').textContent = dirty() ? 'Unsaved changes' : 'Saved';
-        for (const b of bar.querySelectorAll('button')) b.disabled = !dirty();
+        for (const bar of pane.querySelectorAll('.evo-save')) {
+            bar.classList.toggle('is-dirty', dirty());
+            bar.querySelector('.evo-hint').textContent = dirty() ? 'Unsaved changes' : 'Saved';
+            for (const b of bar.querySelectorAll('button')) b.disabled = !dirty();
+        }
     };
 
     // ---- edits

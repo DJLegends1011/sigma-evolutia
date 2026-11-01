@@ -18,12 +18,10 @@
 .evo-danger { color: var(--cl-danger, var(--cl-warning)); }
 .evo-section { margin: var(--space-sm) 0 0; font-size: var(--font-sm); }
 
-/* a sticky footer, as the app's own modals keep their actions: the tab strip owns the top */
-.evo-save { display: flex; align-items: center; gap: var(--space-xs); position: sticky; bottom: 0; z-index: 2;
-    padding: var(--space-xs); padding-bottom: max(var(--space-xs), var(--safe-bottom, 0px)); border-radius: var(--radius-md);
-    background: var(--bg-secondary); border: 1px solid var(--cl-border); }
+.evo-save { display: flex; align-items: center; gap: var(--space-xs); padding: var(--space-xs);
+    border-radius: var(--radius-md); background: var(--cl-ghost-faint); border: 1px solid transparent; }
 .evo-save .evo-hint { flex: 1; }
-.evo-save.is-dirty { border-color: var(--cl-accent-tint-border); box-shadow: inset 0 0 0 999px var(--cl-accent-tint); }
+.evo-save.is-dirty { background: var(--cl-accent-tint); border-color: var(--cl-accent-tint-border); }
 
 .evo-egos { display: flex; flex-wrap: wrap; gap: var(--space-2xs); }
 .evo-chip { display: inline-flex; align-items: center; gap: var(--space-2xs); padding: var(--space-2xs) var(--space-sm);
@@ -65,8 +63,10 @@
     padding: var(--space-xs); border-radius: var(--radius-sm); margin: var(--space-2xs) 0 var(--space-sm); }
 .evo-picker { display: flex; flex-direction: column; gap: var(--space-xs); padding: var(--space-sm); }
 
-/* Long text: compact boxes with an expand button to a full-screen editor, as the Edit tab does it, so most of
-   the tab stays free to swipe. Keyword lists are short: they grow to their text and never scroll inside. */
+/* Long text: compact boxes with an expand button to a full-screen editor, as the Edit tab does it. A compact box
+   never scrolls inside, so a swipe that starts on it scrolls the details (long text is read and edited expanded).
+   Keyword lists are short: they grow to their text and never scroll inside either. */
+.evo-editor textarea.evo-long { overflow: hidden; resize: none; touch-action: pan-y; }
 .evo-editor textarea.evo-keywords { field-sizing: content; overflow: hidden; resize: none; min-height: 2.6rem; }
 .evo-label-row { display: flex; align-items: center; justify-content: space-between; gap: var(--space-xs); }
 .evo-expand { border: none; background: none; color: var(--text-muted); cursor: pointer; padding: var(--space-2xs); }
