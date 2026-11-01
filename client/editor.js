@@ -320,17 +320,16 @@ export function mountEditor(pane, character, ctx) {
         } catch (e) { CoreAPI.showToast(`Could not save: ${e.message}`, 'error'); }
     }
 
-    // The details paint the Description (and the Edit form holds it) only when the card opens, so it opens
-    // again; opening lands on Details, so step back to this tab, with the card body hidden meanwhile so the
-    // reader sees no flash. No door for either: absent markup just leaves Details showing.
-    async function reopenHere() {
-        const body = document.querySelector('#charModal .modal-body');
-        body?.style.setProperty('visibility', 'hidden');
-        try {
-            await ctx.commands.run('character.open', { id: charId });
-            document.querySelector('.tab-btn[data-ext-tab="evolutia/evolutia"]')?.click();
-        } finally {
-            requestAnimationFrame(() => body?.style.removeProperty('visibility'));
+    // The details paint the Description, and the Edit form takes it, only when the card opens; re-opening
+    // rebuilds every tab (a flash), so the two are brought up to the new Description in place instead. No door
+    // for either: absent markup is skipped, and a Description box with the reader's own typing is left alone.
+    function showDescription(was, now) {
+        const shown = document.getElementById('modalDescription');
+        if (shown) shown.innerHTML = CoreAPI.safePurify(CoreAPI.formatRichText(now, character.name));
+        const box = document.getElementById('editDescription');
+        if (box && box.value !== now) {
+            if (box.value === was) box.value = now;
+            else CoreAPI.showToast('The Edit tab holds your unsaved Description: re-open the card before saving it', 'warning');
         }
     }
 
@@ -339,10 +338,12 @@ export function mountEditor(pane, character, ctx) {
         try {
             if (dirty()) await save();
             const fields = switchPatch({ ...card, extensions: { evolutia: { ...card.extensions.evolutia, definition: def } } }, want);
-            if (fields) await update(fields);
+            if (fields) {
+                await update(fields);
+                showDescription(card.description, fields.description);
+            }
             CoreAPI.showToast(want ? 'Evolutia is on: the Description is now {{evolutia}}' : 'Evolutia is off: the Description is back', 'success');
             await load();
-            if (fields) await reopenHere();
         } catch (e) { CoreAPI.showToast(`Could not switch Evolutia: ${e.message}`, 'error'); render(); }
     }
 
