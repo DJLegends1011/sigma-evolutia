@@ -37,12 +37,13 @@ export function register(router, ctx) {
         const r = personaId && db.prepare(`SELECT enabled, original, definition FROM ${PERSONAS} WHERE persona_id = ?`).get(personaId);
         return r ? { on: !!r.enabled, original: r.original, definition: r.definition ? JSON.parse(r.definition) : null } : { on: false, original: null, definition: null };
     };
-    const writePersonaRow = (db, personaId, row) => {
+    // a report belongs inside its write's transaction (a nested one joins the caller's)
+    const writePersonaRow = (db, personaId, row) => db.transaction(() => {
         db.prepare(`INSERT INTO ${PERSONAS} (persona_id, enabled, original, definition) VALUES (?, ?, ?, ?)
             ON CONFLICT(persona_id) DO UPDATE SET enabled = excluded.enabled, original = excluded.original, definition = excluded.definition`)
             .run(personaId, row.on ? 1 : 0, row.original ?? null, row.definition ? JSON.stringify(row.definition) : null);
         ctx.report(db, { entity: 'persona', op: 'updated', ids: [personaId], fields: ['evolutia'] });
-    };
+    })();
     // the persona a chat speaks as: its own, else the account's active one
     const chatPersona = (db, chatId) => ctx.stores.personas.resolvePersona(db, chatId)?.persona || null;
 

@@ -172,7 +172,8 @@ const glowing = () => human([field('eyes', 'Glowing Eyes', "{{user}}'s eyes glow
 test('a persona Trigger asks its Action of the character\'s next reply, and that reply confirms it', async () => {
     const personaId = await demetri('A laid-back student.');
     await evolutia(`/personas/${personaId}/on`, 'PUT', { on: true });
-    await evolutia(`/personas/${personaId}/definition`, 'PUT', { definition: glowing() });
+    const saved = await evolutia(`/personas/${personaId}/definition`, 'PUT', { definition: glowing() });
+    assert.equal(saved.status, 200, JSON.stringify(saved.body));
     const { chatId } = await kael(null);
     await setChat(chatId, [said('Hello.'), you('I close my eyes and focus.')]);
     let built = (await me.api(`/chats/${chatId}/prompt`)).body.messages;
