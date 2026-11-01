@@ -34,6 +34,8 @@ const prompt = async (chatId) => (await me.api(`/chats/${chatId}/prompt`)).body.
 test('switching Evolutia on puts the Fields where the Description was; switching it off restores the Original Description', async () => {
     const { id, chatId } = await kael(human([field('look', 'Appearance', 'Tall, scarred, amber eyes.', { startsOn: true })]));
     assert.equal((await evolutia(`/characters/${id}/on`, 'PUT', { on: true })).status, 200);
+    const row = async () => (await me.api('/characters?count=false&limit=100')).body.items.find(r => r.id === id);
+    assert.equal((await row()).ext?.evolutia?.on, 1, 'list rows carry it, for the card badge');
     let text = await prompt(chatId);
     assert.match(text, /## Appearance\nTall, scarred, amber eyes\./);
     assert.doesNotMatch(text, /wandering swordsman/);
@@ -42,6 +44,7 @@ test('switching Evolutia on puts the Fields where the Description was; switching
     assert.match(text, /A wandering swordsman\./);
     assert.doesNotMatch(text, /## Appearance/);
     assert.equal((await me.api(`/characters/${id}`)).body.card.data.description, 'A wandering swordsman.');
+    assert.equal((await row()).ext?.evolutia?.on ?? 0, 0);
 });
 
 const you = (mes) => ({ name: 'User', is_user: true, mes });
@@ -93,6 +96,24 @@ test('a Manual Switch is kept on the newest message, so deleting that message un
 test('switching on a card with no Fields yet imports them from the Description, one per heading', async () => {
     const { id, chatId } = await kael(null, 'Intro line.\n\n## Appearance\nTall, scarred.\n\n## Personality\nGruff but kind.');
     await evolutia(`/characters/${id}/on`, 'PUT', { on: true });
+    const read = (await evolutia(`/characters/${id}`)).body;
+    assert.deepEqual(read.definition.alterEgos[0].fields.map(f => f.name), ['Overview', 'Appearance', 'Personality']);
     const text = await prompt(chatId);
     assert.match(text, /## Overview\nIntro line\.\n\n## Appearance\nTall, scarred\.\n\n## Personality\nGruff but kind\./);
+});
+
+test('the chat state reports each Field, the active Alter Ego, the pending Actions and each reply\'s Display Identity', async () => {
+    const def = human([field('secret', 'The Secret', 'Kael is a werewolf.', { enabling: trig('what are you'), entryAction: 'Kael confesses.' })]);
+    def.alterEgos.push({ ...def.alterEgos[0], id: 'wolf', name: 'Werewolf', fields: [], entry: trig('full moon'), entryAction: 'Kael transforms.', displayName: 'Werewolf Kael', avatar: { media: 7 } });
+    const { id, chatId } = await kael(def);
+    await evolutia(`/characters/${id}/on`, 'PUT', { on: true });
+    await setChat(chatId, [said('Hello.'), you('What are you? Look, the full moon!'), said('A howl.'), said('A growl.')]);
+    const seqs = (await me.api(`/chats/${chatId}`)).body.messages.map(m => m.seq);
+    const state = (await evolutia(`/chats/${chatId}/state?charId=${id}`)).body;
+    assert.equal(state.on, true);
+    assert.equal(state.ego.id, 'wolf');
+    assert.deepEqual(state.egos.find(e => e.id === 'human').fields, [{ id: 'secret', name: 'The Secret', phase: 'on', inPrompt: false }]);
+    assert.equal(state.actionBlock, '');
+    assert.deepEqual(state.identities[seqs[2]], { name: 'Kael', avatar: null });
+    assert.deepEqual(state.identities[seqs[3]], { name: 'Werewolf Kael', avatar: { media: 7 } });
 });

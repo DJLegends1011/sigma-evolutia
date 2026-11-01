@@ -1,12 +1,21 @@
 // Evolutia, the server half: Field Definitions on the card, {{evolutia}} in place of the Description,
 // and Field State worked out from the chat's messages each time a prompt is built (ADR 0004).
-import { deriveTimeline, promptFor } from '../core/evolve.js';
+import { deriveTimeline, promptFor, identityFor } from '../core/evolve.js';
 import { definitionFromDescription } from '../core/definition.js';
 
 const MACRO = '{{evolutia}}';
+const CARDS = 'x_evolutia_cards';
+
+// append-only; which cards have Evolutia on, so list rows can carry it (the card badge)
+export const migrations = [
+    `CREATE TABLE ${CARDS} (
+        char_id TEXT PRIMARY KEY REFERENCES characters(id) ON DELETE CASCADE,
+        enabled INTEGER NOT NULL DEFAULT 0) WITHOUT ROWID;`,
+];
 
 export function register(router, ctx) {
     const chars = ctx.stores.characters;
+    ctx.query.projection({ key: 'on', table: CARDS, column: 'enabled' });
     const evolutiaOf = (db, charId) => chars.getCharacter(db, charId)?.card.data.extensions?.evolutia || null;
 
     const options = (db, charName) => ({
@@ -54,6 +63,13 @@ export function register(router, ctx) {
         text: ({ db, chatId, charId, lastSeq }) => promptNow(db, chatId, charId, lastSeq)?.actionBlock ?? '',
     });
 
+    router.get('/characters/:id', (req, res) => {
+        const c = chars.getCharacter(req.db, req.params.id);
+        if (!c) return res.status(404).json({ error: 'no such character' });
+        const ev = c.card.data.extensions?.evolutia || {};
+        return res.json({ on: !!ev.on, definition: ev.definition || null, description: c.card.data.description ?? '' });
+    });
+
     router.put('/characters/:id/definition', (req, res) => {
         const definition = req.body?.definition;
         if (!definition || !Array.isArray(definition.alterEgos) || !definition.alterEgos.length) {
@@ -63,6 +79,35 @@ export function register(router, ctx) {
             return res.status(404).json({ error: 'no such character' });
         }
         return res.json({ ok: true });
+    });
+
+    // What the chat window and the Display Identity read: the state after the newest message, and who wrote each reply.
+    router.get('/chats/:chatId/state', ctx.requireChat, (req, res) => {
+        const db = req.db, chatId = req.params.chatId;
+        const ev = req.query.charId ? evolutiaOf(db, String(req.query.charId)) : null;
+        if (!ev?.on || !ev.definition) return res.json({ on: false });
+        const chat = ctx.prompt.read(db, chatId);
+        const h = history(db, chatId, null);
+        const opts = options(db, h.charName);
+        const timeline = deriveTimeline(ev.definition, h.messages, opts);
+        const now = timeline.at(-1);
+        const said = promptFor(ev.definition, h.messages, timeline, h.messages.length - 1, opts);
+        const inPrompt = new Map(said.rows.map(r => [r.id, r.inPrompt]));
+        const identities = {};
+        h.messages.forEach((m, i) => { if (m.role === 'char') identities[chat.history[i].seq] = identityFor(ev.definition, timeline, i, opts); });
+        const egoView = (e) => ({ id: e.id, name: e.name });
+        return res.json({
+            on: true,
+            ego: egoView(ev.definition.alterEgos.find(e => e.id === now.ego)),
+            egoMove: now.egoMove ? egoView(ev.definition.alterEgos.find(e => e.id === now.egoMove.to)) : null,
+            egos: ev.definition.alterEgos.map(e => ({
+                ...egoView(e),
+                fields: e.fields.map(f => ({ id: f.id, name: f.name, phase: now.fields[e.id][f.id].phase, inPrompt: e.id === now.ego && !!inPrompt.get(f.id) })),
+            })),
+            evolutia: h.expand(said.evolutia),
+            actionBlock: h.expand(said.actionBlock),
+            identities,
+        });
     });
 
     // A Manual Switch rides on the newest message (ADR 0004): deleting that message takes it back.
@@ -94,6 +139,8 @@ export function register(router, ctx) {
             }
             : { description: ev.originalDescription ?? '', 'extensions.evolutia.on': false, 'extensions.evolutia.originalDescription': null };
         chars.patchCharacter(req.db, req.params.id, { fields });
+        req.db.prepare(`INSERT INTO ${CARDS} (char_id, enabled) VALUES (?, ?) ON CONFLICT(char_id) DO UPDATE SET enabled = excluded.enabled`)
+            .run(req.params.id, on ? 1 : 0);
         return res.json({ on });
     });
 }

@@ -114,13 +114,15 @@ function step(def, prev, messages, i, opts) {
 export function promptFor(def, messages, timeline, k, opts) {
     const st = timeline[k + 1];
     const ego = egoById(def, st.ego);
-    const parts = [], actions = [];
+    const parts = [], actions = [], rows = [];
     if (ego.promptName) parts.push(`${opts.charName} is currently going by: ${ego.promptName}.`);
     for (const f of ego.fields) {
         const phase = st.fields[ego.id][f.id].phase;
         const gated = f.activating.keywords.length > 0;
         const admitted = !gated || triggerMatches(f.activating, windowText(messages, k, opts.window, f.sources));
-        if ((phase === 'on' || phase === 'exiting') && admitted) parts.push(`## ${f.name}\n${f.content}`);
+        const inPrompt = (phase === 'on' || phase === 'exiting') && admitted;
+        if (inPrompt) parts.push(`## ${f.name}\n${f.content}`);
+        rows.push({ id: f.id, inPrompt });
         if (phase === 'entering') actions.push(f.entryAction);
         if (phase === 'exiting') actions.push(f.exitAction);
     }
@@ -132,6 +134,7 @@ export function promptFor(def, messages, timeline, k, opts) {
     return {
         evolutia: parts.join('\n\n'),
         actionBlock: actions.map(a => opts.template.replace('{{action}}', () => a)).join('\n'),
+        rows,
     };
 }
 
