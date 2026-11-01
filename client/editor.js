@@ -59,10 +59,13 @@ export function mountEditor(hostPane, owner, ctx, { bigEditor, onChanged, liveSi
         return charList;
     }
 
-    async function load() {
-        pane.innerHTML = '<div class="evo-window"><div class="evo-card"><span class="evo-muted">Loading…</span></div></div>';
+    async function load({ silent = false } = {}) {
+        if (!silent && !got) {
+            pane.innerHTML = '<div class="evo-window"><div class="evo-card"><span class="evo-muted">Loading…</span></div></div>';
+        }
         try {
             const [loaded] = await Promise.all([owner.load(), ensureCharList()]);
+            const hadDef = Boolean(def);
             got = loaded;
             on = got.on;
             def = got.definition;
@@ -74,7 +77,12 @@ export function mountEditor(hostPane, owner, ctx, { bigEditor, onChanged, liveSi
             } else {
                 egoIndex = 0;
             }
-            render();
+            if (!silent || Boolean(def) !== hadDef) {
+                rerender();
+            } else {
+                const toggleInput = pane.querySelector('input[data-act="toggle"]');
+                if (toggleInput) toggleInput.checked = on;
+            }
         } catch (e) {
             pane.innerHTML = `<div class="evo-window"><div class="evo-card"><span class="evo-error">Could not read Evolutia's data: ${esc(e.message)}</span></div></div>`;
         }
@@ -690,9 +698,13 @@ export function mountEditor(hostPane, owner, ctx, { bigEditor, onChanged, liveSi
             if (dirty() && def) await save();
             await owner.setOn(want, def, null);
             CoreAPI.showToast(want ? `Evolutia is active for ${owner.name}` : `Evolutia is off for ${owner.name}`, 'success');
-            await load();
+            await load({ silent: true });
             onChanged?.();
-        } catch (e) { CoreAPI.showToast(`Could not switch Evolutia: ${e.message}`, 'error'); render(); }
+        } catch (e) {
+            CoreAPI.showToast(`Could not switch Evolutia: ${e.message}`, 'error');
+            const toggleInput = pane.querySelector('input[data-act="toggle"]');
+            if (toggleInput) toggleInput.checked = on;
+        }
     }
 
     load();
