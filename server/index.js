@@ -1,7 +1,7 @@
 // Evolutia, the server half: Field Definitions on the card, {{evolutia}} in place of the Description,
 // and Field State worked out from the chat's messages each time a prompt is built (ADR 0004).
-import { deriveTimeline, promptFor, identityFor } from '../core/evolve.js';
-import { definitionFromDescription } from '../core/definition.js';
+import { deriveTimeline, promptFor, identityFor } from '../client/core/evolve.js';
+import { definitionFromDescription } from '../client/core/definition.js';
 
 const MACRO = '{{evolutia}}';
 const CARDS = 'x_evolutia_cards';

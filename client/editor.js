@@ -1,5 +1,5 @@
 // The Evolutia tab in a character's details: switching Evolutia on, and editing Alter Egos and their Fields.
-import { blankField, blankAlterEgo, idFor } from '../core/definition.js';
+import { blankField, blankAlterEgo, idFor } from './core/definition.js';
 
 // Keywords as typed: one per line or comma-separated; a /regex/ keeps its own line whole.
 export function parseKeywords(text) {

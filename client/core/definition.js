@@ -1,4 +1,5 @@
-// Field Definitions: blank ones, and a first set read from a Description. Pure; shared by server and client.
+// Field Definitions: blank ones, and a first set read from a Description. Pure; shared by server and client
+// (under client/, the only folder Sigma serves the page; the server imports it from here).
 
 const trigger = () => ({ keywords: [], mode: 'ANY' });
 

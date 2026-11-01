@@ -2,7 +2,7 @@
 //     node --test test/
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { deriveTimeline, promptFor, identityFor } from '../core/evolve.js';
+import { deriveTimeline, promptFor, identityFor } from '../client/core/evolve.js';
 
 const trig = (...keywords) => ({ keywords, mode: 'ANY' });
 const field = (id, name, content, more = {}) => ({
