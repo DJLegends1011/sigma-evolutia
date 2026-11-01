@@ -1,5 +1,7 @@
 // The Evolutia tab in a character's details: switching Evolutia on, and editing Alter Egos and their Fields.
-import { blankField, idFor, switchPatch } from './core/definition.js';
+import { blankField, idFor, switchPatch, rebuildFromDescription } from './core/definition.js';
+
+const hasHeadings = (text) => /^#{1,6}\s+\S/m.test(String(text ?? ''));
 
 // Keywords as typed: one per line or comma-separated; a /regex/ keeps its own line whole.
 export function parseKeywords(text) {
@@ -27,6 +29,9 @@ export function mountEditor(pane, character, ctx) {
     let on = false, def = null, card = null, saved = '', egoIndex = 0, gallery = null;
 
     const dirty = () => JSON.stringify(def) !== saved;
+    // the Description the Fields come from: kept aside while Evolutia is on, the card's own while it is off
+    const sourceDescription = () => (on ? card?.extensions?.evolutia?.originalDescription : card?.description) ?? '';
+    const REBUILD_ASK = 'Rebuild this card\'s Fields from the Description\'s ## headings? A Field whose name matches a heading keeps its Triggers and Actions and takes the new text; the other Fields of the first Alter Ego are replaced.';
 
     async function load() {
         pane.innerHTML = '<p class="evo-muted">Loading…</p>';
@@ -185,10 +190,14 @@ export function mountEditor(pane, character, ctx) {
                 </div>
                 ${egoHtml(ego)}
                 <h4 class="evo-section">Fields <span class="evo-hint">in prompt order</span></h4>
+                ${egoIndex === 0 && hasHeadings(sourceDescription()) ? `<button type="button" class="cl-btn cl-btn-secondary" data-act="rebuild">
+                    <i class="fa-solid fa-arrows-rotate"></i> Rebuild Fields from the Description's headings</button>` : ''}
                 ${ego.fields.map((f, i) => fieldHtml(f, i, ego.fields.length)).join('') || '<p class="evo-hint">No Fields yet.</p>'}
                 <button type="button" class="cl-btn cl-btn-secondary" data-act="add-field"><i class="fa-solid fa-plus"></i> Field</button>
                 ${settingsHtml()}
             </div>`;
+        // the app's own dropdowns: a bare <select> keeps the browser's look
+        for (const select of pane.querySelectorAll('select')) CoreAPI.initCustomSelect(select);
     }
 
     // Re-render, keeping the open Fields open and the scroll where it was.
@@ -278,6 +287,11 @@ export function mountEditor(pane, character, ctx) {
                 [ego.fields[fi], ego.fields[to]] = [ego.fields[to], ego.fields[fi]];
                 return rerender();
             }
+            case 'rebuild':
+                if (!confirm(REBUILD_ASK)) return;
+                def = rebuildFromDescription(def, sourceDescription());
+                CoreAPI.showToast('Fields rebuilt: check them, then Save', 'info');
+                return rerender();
             case 'own-avatar': ego.avatar = null; return rerender();
             case 'gallery': return openGallery();
             case 'pick-avatar': ego.avatar = { media: Number(b.dataset.media) }; return rerender();
@@ -337,7 +351,11 @@ export function mountEditor(pane, character, ctx) {
         if (!want && dirty() && !confirm('Switch Evolutia off? Your unsaved changes are saved first.')) { render(); return; }
         try {
             if (dirty()) await save();
-            const fields = switchPatch({ ...card, extensions: { evolutia: { ...card.extensions.evolutia, definition: def } } }, want);
+            let fields = switchPatch({ ...card, extensions: { evolutia: { ...card.extensions.evolutia, definition: def } } }, want);
+            // Fields already saved, and a Description with headings (made after them, likely): offer to read them again
+            if (fields && want && def && hasHeadings(card.description) && confirm(REBUILD_ASK)) {
+                fields = { ...fields, 'extensions.evolutia.definition': rebuildFromDescription(def, card.description) };
+            }
             if (fields) {
                 await update(fields);
                 showDescription(card.description, fields.description);

@@ -49,6 +49,23 @@ export function definitionFromDescription(description) {
     return { alterEgos: [blankAlterEgo('main', 'Main', fields)] };
 }
 
+// The first Alter Ego's Fields read again from a Description's headings (Q32). A new Field whose name matches
+// an old one (ignoring case) keeps everything of the old but its name and content; other Alter Egos stay.
+export function rebuildFromDescription(definition, description) {
+    const next = structuredClone(definition);
+    const old = new Map(next.alterEgos[0].fields.map(f => [f.name.toLowerCase(), f]));
+    const imported = definitionFromDescription(description).alterEgos[0].fields;
+    // each old Field to the first heading of its name; their ids taken first: Manual Switches in chats name them
+    const kept = imported.map(f => {
+        const k = old.get(f.name.toLowerCase());
+        if (k) old.delete(f.name.toLowerCase());
+        return k || null;
+    });
+    const taken = new Set(kept.filter(Boolean).map(k => k.id));
+    next.alterEgos[0].fields = imported.map((f, i) => (kept[i] ? { ...kept[i], name: f.name, content: f.content } : { ...f, id: idFor(f.id, taken) }));
+    return next;
+}
+
 export const MACRO = '{{evolutia}}';
 
 // The card write that switches Evolutia on or off (ADR 0003), as Sigma's character.update takes it: on, the
