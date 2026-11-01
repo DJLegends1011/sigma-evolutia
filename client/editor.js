@@ -320,6 +320,20 @@ export function mountEditor(pane, character, ctx) {
         } catch (e) { CoreAPI.showToast(`Could not save: ${e.message}`, 'error'); }
     }
 
+    // The details paint the Description (and the Edit form holds it) only when the card opens, so it opens
+    // again; opening lands on Details, so step back to this tab, with the card body hidden meanwhile so the
+    // reader sees no flash. No door for either: absent markup just leaves Details showing.
+    async function reopenHere() {
+        const body = document.querySelector('#charModal .modal-body');
+        body?.style.setProperty('visibility', 'hidden');
+        try {
+            await ctx.commands.run('character.open', { id: charId });
+            document.querySelector('.tab-btn[data-ext-tab="evolutia/evolutia"]')?.click();
+        } finally {
+            requestAnimationFrame(() => body?.style.removeProperty('visibility'));
+        }
+    }
+
     async function toggle(want) {
         if (!want && dirty() && !confirm('Switch Evolutia off? Your unsaved changes are saved first.')) { render(); return; }
         try {
@@ -329,11 +343,7 @@ export function mountEditor(pane, character, ctx) {
             CoreAPI.showToast(want ? 'Evolutia is on: the Description is now {{evolutia}}' : 'Evolutia is off: the Description is back', 'success');
             await load();
             // the details paint the Description only when the card opens: open it again so they show the new one
-            if (fields) {
-                await ctx.commands.run('character.open', { id: charId });
-                // opening lands on Details: step back to this tab (no door for it; absent markup leaves Details)
-                document.querySelector('.tab-btn[data-ext-tab="evolutia/evolutia"]')?.click();
-            }
+            if (fields) await reopenHere();
         } catch (e) { CoreAPI.showToast(`Could not switch Evolutia: ${e.message}`, 'error'); render(); }
     }
 
