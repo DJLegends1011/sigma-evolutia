@@ -56,7 +56,11 @@ function switchField(st, ego, f, on, i, skip = false) {
 }
 
 function switchEgo(def, st, toId, i, skip = false) {
-    if (st.egoMove?.to === toId) return;
+    // the change already waiting: skipped, it happens now; asked again, it keeps waiting
+    if (st.egoMove?.to === toId) {
+        if (skip) { st.ego = toId; st.egoMove = null; }
+        return;
+    }
     if (st.egoMove && toId === st.ego) { st.egoMove = null; return; }
     if (toId === st.ego || !egoById(def, toId)) return;
     const from = egoById(def, st.ego), to = egoById(def, toId);

@@ -56,10 +56,12 @@ export default {
 
         // Switch Alter Ego: a Manual Switch at the newest message, for the character's side or the user's (Persona Side)
         const picker = ctx.ui.dialog({ id: 'switch-ego', label: 'Switch Alter Ego', icon: 'fa-masks-theater' });
+        // while a change waits, the active Alter Ego cancels it ("stay") and the coming one finishes it now
         const egoButtons = (st, side) => st.egos.map(e => {
-            const active = e.id === st.ego.id, coming = e.id === st.egoMove?.id;
-            return `<button type="button" class="cl-btn ${active ? '' : 'cl-btn-secondary'}" data-ego="${esc(e.id)}" data-side="${side}" ${active || coming ? 'disabled' : ''}>
-                ${esc(e.name)}${active ? ' (active)' : coming ? ' (changing)' : ''}</button>`;
+            const active = e.id === st.ego.id, coming = e.id === st.egoMove?.id, waiting = !!st.egoMove;
+            const label = active ? (waiting ? ' (active): stay, cancel the change' : ' (active)') : coming ? ' (changing): finish it now' : '';
+            return `<button type="button" class="cl-btn ${active ? '' : 'cl-btn-secondary'}" data-ego="${esc(e.id)}" data-side="${side}"${coming ? ' data-finish' : ''} ${active && !waiting ? 'disabled' : ''}>
+                ${esc(e.name)}${label}</button>`;
         }).join('');
         ctx.ui.addAction('chat', {
             id: 'switch-ego',
@@ -87,7 +89,7 @@ export default {
                     if (!b) return;
                     try {
                         await ctx.server.call(`/chats/${encodeURIComponent(chatId)}/switch`, 'POST', {
-                            kind: 'ego', id: b.dataset.ego, skip: body.querySelector('[data-skip]').checked,
+                            kind: 'ego', id: b.dataset.ego, skip: b.hasAttribute('data-finish') || body.querySelector('[data-skip]').checked,
                             ...(b.dataset.side === 'persona' ? { side: 'persona' } : {}),
                         });
                         await picker.close();

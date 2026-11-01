@@ -208,3 +208,18 @@ test('a skipped Manual Switch on the greeting starts the chat as that Alter Ego:
     assert.equal(promptFor(wolfDef(), chat, timeline, 1, OPTS).evolutia, 'Kael is currently going by: the Werewolf.\n\n## Form\nA huge black wolf.');
     assert.equal(promptFor(wolfDef(), chat, timeline, 1, OPTS).actionBlock, '');
 });
+
+test('a skipped Manual Switch to the Alter Ego a change is waiting for finishes that change at once', () => {
+    const chat = [kael('Hello.', [{ kind: 'ego', id: 'wolf' }]), you('Wait.', [{ kind: 'ego', id: 'wolf', skip: true }])];
+    const timeline = deriveTimeline(wolfDef(), chat, OPTS);
+    assert.equal(timeline.at(-1).ego, 'wolf');
+    assert.equal(timeline.at(-1).egoMove, null);
+    assert.equal(promptFor(wolfDef(), chat, timeline, 1, OPTS).actionBlock, '');
+});
+
+test('a Manual Switch to the active Alter Ego while a change waits cancels the change', () => {
+    const chat = [kael('Hello.', [{ kind: 'ego', id: 'wolf' }]), you('Never mind.', [{ kind: 'ego', id: 'human' }])];
+    const timeline = deriveTimeline(wolfDef(), chat, OPTS);
+    assert.equal(timeline.at(-1).ego, 'human');
+    assert.equal(timeline.at(-1).egoMove, null);
+});

@@ -25,7 +25,9 @@ export function mountPanel(body, ctx) {
                 <section class="evo-panel-ego ${e.id === st.ego.id ? 'is-active' : ''}">
                     <div class="evo-panel-ego-head">
                         <span>${esc(e.name)}${e.id === st.ego.id ? ' <span class="evo-hint">(active)</span>' : ''}</span>
-                        ${e.id === st.ego.id || e.id === st.egoMove?.id ? '' : `<button type="button" class="cl-btn cl-btn-secondary evo-small"${tag} data-ego="${esc(e.id)}">Switch to</button>`}
+                        ${e.id === st.egoMove?.id ? `<button type="button" class="cl-btn cl-btn-secondary evo-small"${tag} data-ego="${esc(e.id)}" data-finish>Finish now</button>`
+                            : e.id === st.ego.id ? (st.egoMove ? `<button type="button" class="cl-btn cl-btn-secondary evo-small"${tag} data-ego="${esc(e.id)}">Stay</button>` : '')
+                            : `<button type="button" class="cl-btn cl-btn-secondary evo-small"${tag} data-ego="${esc(e.id)}">Switch to</button>`}
                     </div>
                     ${e.fields.map(f => {
                         const isOn = f.phase === 'on' || f.phase === 'entering';
@@ -67,7 +69,7 @@ export function mountPanel(body, ctx) {
 
     async function manual(sw) {
         try {
-            await ctx.server.call(`/chats/${encodeURIComponent(follower.chatId())}/switch`, 'POST', { ...sw, skip });
+            await ctx.server.call(`/chats/${encodeURIComponent(follower.chatId())}/switch`, 'POST', { ...sw, skip: sw.skip || skip });
             await follower.reload();
         } catch (e) { CoreAPI.showToast(`Could not switch: ${e.message}`, 'error'); }
     }
@@ -78,7 +80,7 @@ export function mountPanel(body, ctx) {
         if (!b) return;
         const side = b.dataset.side === 'persona' ? { side: 'persona' } : {};
         if (b.dataset.field) manual({ kind: 'field', ego: b.dataset.egoId, id: b.dataset.field, on: b.dataset.on === 'true', ...side });
-        else if (b.dataset.ego) manual({ kind: 'ego', id: b.dataset.ego, ...side });
+        else if (b.dataset.ego) manual({ kind: 'ego', id: b.dataset.ego, ...side, ...(b.hasAttribute('data-finish') ? { skip: true } : {}) });
     });
 
     return {
