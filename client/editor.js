@@ -173,8 +173,8 @@ export function mountEditor(pane, character, ctx, { bigEditor }) {
         </details>`;
     }
 
-    // Save and Revert, above the editor and again below it: the details scroll as one page, and a bar pinned
-    // to it would fight the tab strip and a header that slides away.
+    // Save and Revert at the foot of the editor, where Sigma's own dialogs keep their actions; not pinned: the
+    // details scroll as one page, and a pinned bar would fight the tab strip and the header that slides away.
     const saveBarHtml = () => `
         <div class="evo-save ${dirty() ? 'is-dirty' : ''}">
             <span class="evo-hint">${dirty() ? 'Unsaved changes' : 'Saved'}</span>
@@ -194,7 +194,6 @@ export function mountEditor(pane, character, ctx, { bigEditor }) {
         pane.innerHTML = `
             <div class="evo-editor">
                 ${head}
-                ${saveBarHtml()}
                 <div class="evo-egos">
                     ${def.alterEgos.map((e, i) => `<button type="button" class="evo-chip ${i === egoIndex ? 'is-on' : ''}" data-act="ego" data-ego="${i}">${esc(e.name || 'Untitled')}</button>`).join('')}
                     <button type="button" class="evo-chip" data-act="add-ego" title="New Alter Ego, copied from this one"><i class="fa-solid fa-plus"></i> Alter Ego</button>
