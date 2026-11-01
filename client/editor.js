@@ -342,7 +342,6 @@ export function mountEditor(pane, character, ctx) {
             if (fields) await update(fields);
             CoreAPI.showToast(want ? 'Evolutia is on: the Description is now {{evolutia}}' : 'Evolutia is off: the Description is back', 'success');
             await load();
-            // the details paint the Description only when the card opens: open it again so they show the new one
             if (fields) await reopenHere();
         } catch (e) { CoreAPI.showToast(`Could not switch Evolutia: ${e.message}`, 'error'); render(); }
     }
