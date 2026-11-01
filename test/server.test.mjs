@@ -23,11 +23,14 @@ const human = (fields) => ({ alterEgos: [{
     entryAction: null, exitAction: null, entryConfirm: null, exitConfirm: null, promptName: null, displayName: null,
 }] });
 
+// an identical card imports as the same character, so every chat gets its own name
+let chats = 0;
 async function kael(def, description = 'A wandering swordsman.') {
     const { id } = await me.importCard({ name: 'Kael', description, first_mes: 'Hello.' });
     if (def) assert.equal((await evolutia(`/characters/${id}/definition`, 'PUT', { definition: def })).status, 200);
-    const chat = (await me.api(`/characters/${id}/chats`, 'POST', { name: 'Test chat' })).body;
-    return { id, chatId: chat.id };
+    const made = await me.api(`/characters/${id}/chats`, 'POST', { name: `Test chat ${++chats}` });
+    assert.ok(made.body?.id, `chat not made: ${made.status} ${JSON.stringify(made.body)}`);
+    return { id, chatId: made.body.id };
 }
 const prompt = async (chatId) => (await me.api(`/chats/${chatId}/prompt`)).body.messages.map(m => m.content).join('\n');
 
@@ -49,7 +52,7 @@ test('switching Evolutia on puts the Fields where the Description was; switching
 
 const you = (mes) => ({ name: 'User', is_user: true, mes });
 const said = (mes) => ({ name: 'Kael', is_user: false, mes });
-const setChat = async (chatId, messages) => assert.equal((await me.api(`/chats/${chatId}/messages`, 'PUT', { messages })).status, 200);
+const setChat = async (chatId, messages) => { const r = await me.api(`/chats/${chatId}/messages`, "PUT", { messages }); assert.equal(r.status, 200, JSON.stringify(r.body)); };
 
 const secret = () => human([field('secret', 'The Secret', 'Kael has admitted to {{user}} that he is a werewolf.', {
     enabling: trig('what are you'), sources: { user: true, char: false },
@@ -133,4 +136,67 @@ test('the badge follows a card switched through the app\'s own card write, as th
     assert.equal((await row()).ext?.evolutia?.on, 1);
     await me.api(`/characters/${id}`, 'PATCH', { fields: { 'extensions.evolutia.on': false } });
     assert.equal((await row()).ext?.evolutia?.on ?? 0, 0);
+});
+
+// ---- the Persona Side (ADR 0006)
+
+// a fresh Demetri each time (Sigma keeps persona names unique), made the active persona
+async function demetri(description = 'A laid-back student.') {
+    for (const old of (await me.api('/personas')).body.personas.filter(x => x.name === 'Demetri')) await me.api(`/personas/${old.id}`, 'DELETE');
+    const p = (await me.api('/personas', 'POST', { name: 'Demetri', description })).body;
+    assert.ok(p.id, JSON.stringify(p));
+    assert.equal((await me.api('/personas/active', 'PUT', { id: p.id })).status, 200);
+    return p.id;
+}
+
+test('switching Evolutia on for a persona puts its Fields where its description was; off restores the description', async () => {
+    const personaId = await demetri('## Looks\nTall, hoodie.\n\n## Quirk\nAlways late.');
+    const { chatId } = await kael(null);
+    assert.equal((await evolutia(`/personas/${personaId}/on`, 'PUT', { on: true })).status, 200);
+    assert.equal((await me.api(`/personas/${personaId}`)).body.description, '{{evolutia_persona}}');
+    let text = await prompt(chatId);
+    assert.match(text, /## Looks\nTall, hoodie\.\n\n## Quirk\nAlways late\./);
+    const read = (await evolutia(`/personas/${personaId}`)).body;
+    assert.deepEqual(read.definition.alterEgos[0].fields.map(f => f.name), ['Looks', 'Quirk']);
+    assert.equal((await evolutia(`/personas/${personaId}/on`, 'PUT', { on: false })).status, 200);
+    assert.equal((await me.api(`/personas/${personaId}`)).body.description, '## Looks\nTall, hoodie.\n\n## Quirk\nAlways late.');
+    text = await prompt(chatId);
+    assert.doesNotMatch(text, /evolutia_persona/);
+});
+
+const glowing = () => human([field('eyes', 'Glowing Eyes', "{{user}}'s eyes glow faintly blue.", {
+    enabling: trig('focus'), sources: { user: true, char: false },
+    entryAction: "Describe how {{user}}'s eyes begin to glow.", entryConfirm: trig('glow', 'glowing'),
+})]);
+
+test('a persona Trigger asks its Action of the character\'s next reply, and that reply confirms it', async () => {
+    const personaId = await demetri('A laid-back student.');
+    await evolutia(`/personas/${personaId}/on`, 'PUT', { on: true });
+    await evolutia(`/personas/${personaId}/definition`, 'PUT', { definition: glowing() });
+    const { chatId } = await kael(null);
+    await setChat(chatId, [said('Hello.'), you('I close my eyes and focus.')]);
+    let built = (await me.api(`/chats/${chatId}/prompt`)).body.messages;
+    assert.match(built.at(-1).content, /make this happen: Describe how Demetri's eyes begin to glow\./);
+    await setChat(chatId, [said('Hello.'), you('I close my eyes and focus.'), said('Your eyes start glowing!')]);
+    assert.match(await prompt(chatId), /## Glowing Eyes\nDemetri's eyes glow faintly blue\./);
+});
+
+test('a persona Manual Switch changes only the persona, and the chat state reports both sides', async () => {
+    const personaId = await demetri('A laid-back student.');
+    const def = glowing();
+    def.alterEgos[0].displayName = 'Demetri (glowing)';
+    await evolutia(`/personas/${personaId}/on`, 'PUT', { on: true, definition: def });
+    const { id, chatId } = await kael(secret());
+    await evolutia(`/characters/${id}/on`, 'PUT', { on: true });
+    await setChat(chatId, [said('Hello.'), you('Hi.')]);
+    await evolutia(`/chats/${chatId}/switch`, 'POST', { side: 'persona', kind: 'field', ego: 'human', id: 'eyes', on: true, skip: true });
+    const text = await prompt(chatId);
+    assert.match(text, /## Glowing Eyes/);
+    assert.doesNotMatch(text, /## The Secret/);
+    const seqs = (await me.api(`/chats/${chatId}`)).body.messages.map(m => m.seq);
+    const state = (await evolutia(`/chats/${chatId}/state?charId=${id}`)).body;
+    assert.equal(state.egos[0].fields.find(f => f.id === 'secret').phase, 'off');
+    assert.equal(state.persona.name, 'Demetri');
+    assert.equal(state.persona.egos[0].fields.find(f => f.id === 'eyes').phase, 'on');
+    assert.deepEqual(state.persona.identities[seqs[1]], { name: 'Demetri (glowing)', avatar: null });
 });
