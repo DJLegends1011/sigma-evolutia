@@ -1,8 +1,12 @@
-// Evolutia, the client half: the card's Evolutia tab, the conversation window, Switch Alter Ego,
-// the card badge, Display Identity and the settings.
+// Evolutia, the client half: the card's Evolutia tab, the Persona Side in Settings › Chat, the conversation
+// window, Switch Alter Ego, the card badge, Display Identity and the settings.
 import { mountEditor } from './editor.js';
+import { cardOwner } from './owners.js';
 import { mountPanel } from './panel.js';
 import { createIdentity } from './identity.js';
+import { mountPersonaSettings } from './persona-settings.js';
+
+let unmountPersonaSettings = () => {};
 
 export default {
     init(ctx) {
@@ -20,8 +24,11 @@ export default {
             id: 'evolutia',
             label: 'Evolutia',
             icon: 'fa-masks-theater',
-            render: (pane, { character }) => { mountEditor(pane, character, ctx, { bigEditor }); },
+            render: (pane, { character }) => { mountEditor(pane, cardOwner(character, ctx), ctx, { bigEditor }); },
         });
+
+        // the Persona Side's block in Settings › Chat
+        unmountPersonaSettings = mountPersonaSettings(ctx, { bigEditor });
 
         const identity = createIdentity(ctx);
 
@@ -45,6 +52,7 @@ export default {
             ctx.events.on(name, ({ chatId }) => { if (view?.isOpen() && chatId === view.chatId()) view.reloadSoon(); });
         }
         ctx.events.on('character.updated', () => { if (view?.isOpen()) view.reloadSoon(); });
+        ctx.events.on('persona.changed', () => { if (view?.isOpen()) view.reloadSoon(); });
 
         // Switch Alter Ego: a Manual Switch at the newest message
         const picker = ctx.ui.dialog({ id: 'switch-ego', label: 'Switch Alter Ego', icon: 'fa-masks-theater' });
@@ -104,4 +112,7 @@ export default {
             });
         });
     },
+
+    // the host undoes what went through ctx; the Settings block is Evolutia's own markup
+    dispose() { unmountPersonaSettings(); },
 };

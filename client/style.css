@@ -73,3 +73,6 @@
 .evo-expand:hover { color: var(--text-primary); }
 .evo-big { flex: 1; }
 .evo-big-buttons { justify-content: flex-end; margin-top: var(--space-sm); }
+
+/* the Persona Side: its editor in a dialog, and its block in Settings › Chat */
+.evo-dialog-body { padding: var(--space-md); overflow-y: auto; }

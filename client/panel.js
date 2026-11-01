@@ -8,51 +8,59 @@ export function mountPanel(body, ctx) {
     let character = null, skip = false, last = null;
 
     const follower = ctx.chats.follow({
-        read: (chatId) => character
-            ? ctx.server.call(`/chats/${encodeURIComponent(chatId)}/state?charId=${encodeURIComponent(character.id)}`)
-            : Promise.resolve({ on: false }),
+        read: (chatId) => ctx.server.call(`/chats/${encodeURIComponent(chatId)}/state${character ? `?charId=${encodeURIComponent(character.id)}` : ''}`),
         apply: (state) => { last = state; render(); },
         fail: (e) => { body.innerHTML = `<p class="evo-error">Could not read Evolutia's state: ${esc(e.message)}</p>`; },
     });
 
+    // One side's state: the character's, or the user's (side 'persona') under its own heading.
+    function sideHtml(st, side, title) {
+        const tag = side === 'persona' ? ' data-side="persona"' : '';
+        return `
+            <div class="evo-now">
+                <span class="evo-label">${esc(title)}</span>
+                <strong>${esc(st.ego.name)}</strong>${st.egoMove ? ` <span class="evo-pill evo-entering">→ ${esc(st.egoMove.name)} after the next reply</span>` : ''}
+            </div>
+            ${st.egos.map(e => `
+                <section class="evo-panel-ego ${e.id === st.ego.id ? 'is-active' : ''}">
+                    <div class="evo-panel-ego-head">
+                        <span>${esc(e.name)}${e.id === st.ego.id ? ' <span class="evo-hint">(active)</span>' : ''}</span>
+                        ${e.id === st.ego.id || e.id === st.egoMove?.id ? '' : `<button type="button" class="cl-btn cl-btn-secondary evo-small"${tag} data-ego="${esc(e.id)}">Switch to</button>`}
+                    </div>
+                    ${e.fields.map(f => {
+                        const isOn = f.phase === 'on' || f.phase === 'entering';
+                        return `<div class="evo-panel-field">
+                            <span class="evo-panel-name">${esc(f.name)}</span>
+                            <span class="evo-pill evo-${f.phase}">${PHASE[f.phase]}</span>
+                            ${f.inPrompt ? '<i class="fa-solid fa-check evo-in" title="In the prompt"></i>' : ''}
+                            <button type="button" class="cl-btn cl-btn-secondary evo-small"${tag} data-ego-id="${esc(e.id)}" data-field="${esc(f.id)}" data-on="${!isOn}">Turn ${isOn ? 'off' : 'on'}</button>
+                        </div>`;
+                    }).join('') || '<p class="evo-hint">No Fields.</p>'}
+                </section>`).join('')}`;
+    }
+
     function render() {
         const s = last;
         if (!follower.chatId()) { body.innerHTML = '<p class="evo-muted">Open a chat to see its Evolutia state.</p>'; return; }
-        if (!s?.on) {
-            body.innerHTML = `<p class="evo-muted">Evolutia is off for ${esc(character?.name || 'this character')}. Switch it on in the card's Evolutia tab.</p>`;
+        if (!s?.on && !s?.persona) {
+            body.innerHTML = `<p class="evo-muted">Evolutia is off for ${esc(character?.name || 'this character')} and for your persona. Switch it on in the card's Evolutia tab, or for a persona in Settings › Chat.</p>`;
             return;
         }
-        const tokens = Math.ceil(((s.evolutia || '').length + (s.actionBlock || '').length) / 4);
+        const text = [s.evolutia, s.persona?.evolutia].filter(Boolean).join('\n\n');
+        const actions = [s.on && s.actionBlock, s.persona?.actionBlock].filter(Boolean).join('\n');
+        const tokens = Math.ceil((text.length + actions.length) / 4);
         body.innerHTML = `
             <div class="evo-panel">
-                <div class="evo-now">
-                    <span class="evo-label">Alter Ego</span>
-                    <strong>${esc(s.ego.name)}</strong>${s.egoMove ? ` <span class="evo-pill evo-entering">→ ${esc(s.egoMove.name)} after the next reply</span>` : ''}
-                </div>
                 <label class="evo-switch evo-skip"><input type="checkbox" class="cl-switch-input" data-skip ${skip ? 'checked' : ''}><span class="cl-switch" aria-hidden="true"></span>
                     <span>Manual Switches skip their Actions</span></label>
-                ${s.egos.map(e => `
-                    <section class="evo-panel-ego ${e.id === s.ego.id ? 'is-active' : ''}">
-                        <div class="evo-panel-ego-head">
-                            <span>${esc(e.name)}${e.id === s.ego.id ? ' <span class="evo-hint">(active)</span>' : ''}</span>
-                            ${e.id === s.ego.id || e.id === s.egoMove?.id ? '' : `<button type="button" class="cl-btn cl-btn-secondary evo-small" data-ego="${esc(e.id)}">Switch to</button>`}
-                        </div>
-                        ${e.fields.map(f => {
-                            const isOn = f.phase === 'on' || f.phase === 'entering';
-                            return `<div class="evo-panel-field">
-                                <span class="evo-panel-name">${esc(f.name)}</span>
-                                <span class="evo-pill evo-${f.phase}">${PHASE[f.phase]}</span>
-                                ${f.inPrompt ? '<i class="fa-solid fa-check evo-in" title="In the prompt"></i>' : ''}
-                                <button type="button" class="cl-btn cl-btn-secondary evo-small" data-ego-id="${esc(e.id)}" data-field="${esc(f.id)}" data-on="${!isOn}">Turn ${isOn ? 'off' : 'on'}</button>
-                            </div>`;
-                        }).join('') || '<p class="evo-hint">No Fields.</p>'}
-                    </section>`).join('')}
+                ${s.on ? sideHtml(s, 'char', character?.name || 'Character') : `<p class="evo-hint">Evolutia is off for ${esc(character?.name || 'this character')}.</p>`}
+                ${s.persona ? `<h4 class="evo-section">You (${esc(s.persona.name)})</h4>${sideHtml(s.persona, 'persona', 'Alter Ego')}` : ''}
                 <details class="evo-preview">
                     <summary>Next prompt <span class="evo-hint">~${tokens} tokens</span></summary>
-                    <span class="evo-label">In place of the Description</span>
-                    <pre>${esc(s.evolutia || '(empty)')}</pre>
+                    ${s.on ? `<span class="evo-label">In place of the Description</span><pre>${esc(s.evolutia || '(empty)')}</pre>` : ''}
+                    ${s.persona ? `<span class="evo-label">In place of your persona's description</span><pre>${esc(s.persona.evolutia || '(empty)')}</pre>` : ''}
                     <span class="evo-label">Next to the reply</span>
-                    <pre>${esc(s.actionBlock || '(no Actions)')}</pre>
+                    <pre>${esc(actions || '(no Actions)')}</pre>
                 </details>
             </div>`;
     }
@@ -68,8 +76,9 @@ export function mountPanel(body, ctx) {
     body.addEventListener('click', (e) => {
         const b = e.target.closest('button');
         if (!b) return;
-        if (b.dataset.field) manual({ kind: 'field', ego: b.dataset.egoId, id: b.dataset.field, on: b.dataset.on === 'true' });
-        else if (b.dataset.ego) manual({ kind: 'ego', id: b.dataset.ego });
+        const side = b.dataset.side === 'persona' ? { side: 'persona' } : {};
+        if (b.dataset.field) manual({ kind: 'field', ego: b.dataset.egoId, id: b.dataset.field, on: b.dataset.on === 'true', ...side });
+        else if (b.dataset.ego) manual({ kind: 'ego', id: b.dataset.ego, ...side });
     });
 
     return {

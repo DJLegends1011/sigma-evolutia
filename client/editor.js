@@ -1,5 +1,6 @@
-// The Evolutia tab in a character's details: switching Evolutia on, and editing Alter Egos and their Fields.
-import { blankField, idFor, switchPatch, rebuildFromDescription } from './core/definition.js';
+// The Evolutia editor, for a card (its details tab) or a persona (a dialog from Settings › Chat): switching
+// Evolutia on, and editing Alter Egos and their Fields.
+import { blankField, idFor, rebuildFromDescription } from './core/definition.js';
 
 const hasHeadings = (text) => /^#{1,6}\s+\S/m.test(String(text ?? ''));
 
@@ -21,25 +22,23 @@ function setPath(obj, path, value) {
     target[last] = value;
 }
 
-export function mountEditor(pane, character, ctx, { bigEditor }) {
+// The editor of one owner's Field Definitions (a card's or a persona's, see owners.js).
+export function mountEditor(pane, owner, ctx, { bigEditor }) {
     const { CoreAPI } = ctx;
     const esc = (s) => CoreAPI.escapeHtml(String(s ?? ''));
-    const call = ctx.server.call;
-    const charId = character.id;
-    let on = false, def = null, card = null, saved = '', egoIndex = 0, gallery = null;
+    let on = false, def = null, got = null, saved = '', egoIndex = 0, gallery = null;
 
     const dirty = () => JSON.stringify(def) !== saved;
-    // the Description the Fields come from: kept aside while Evolutia is on, the card's own while it is off
-    const sourceDescription = () => (on ? card?.extensions?.evolutia?.originalDescription : card?.description) ?? '';
-    const REBUILD_ASK = 'Rebuild this card\'s Fields from the Description\'s ## headings? A Field whose name matches a heading keeps its Triggers and Actions and takes the new text; the other Fields of the first Alter Ego are replaced.';
+    // the description the Fields come from: kept aside while Evolutia is on, the owner's own while it is off
+    const sourceDescription = () => got?.source ?? '';
+    const REBUILD_ASK = `Rebuild this ${owner.noun}'s Fields from the ${owner.descLabel}'s ## headings? A Field whose name matches a heading keeps its Triggers and Actions and takes the new text; the other Fields of the first Alter Ego are replaced.`;
 
     async function load() {
         pane.innerHTML = '<p class="evo-muted">Loading…</p>';
         try {
-            const got = await call(`/characters/${encodeURIComponent(charId)}`);
+            got = await owner.load();
             on = got.on;
             def = got.definition;
-            card = got.card;
             saved = JSON.stringify(def);
             egoIndex = 0;
             render();
@@ -56,7 +55,7 @@ export function mountEditor(pane, character, ctx, { bigEditor }) {
     const reads = (path, sources) => `
         <div class="evo-reads"><span class="evo-label">Reads</span>
             <label><input type="checkbox" data-path="${path}.user" ${sources?.user ? 'checked' : ''}> <span>Your messages</span></label>
-            <label><input type="checkbox" data-path="${path}.char" ${sources?.char ? 'checked' : ''}> <span>${esc(character.name)}'s messages</span></label>
+            <label><input type="checkbox" data-path="${path}.char" ${sources?.char ? 'checked' : ''}> <span>${esc(owner.otherSide)}</span></label>
         </div>`;
 
     const trigger = (path, label, hint, value) => `
@@ -121,18 +120,19 @@ export function mountEditor(pane, character, ctx, { bigEditor }) {
     }
 
     function avatarHtml(ego) {
-        const media = ego.avatar?.media;
-        const thumb = media ? `<img class="evo-avatar" src="${esc(CoreAPI.thumbUrl('media', media, 96))}" alt="">` : '<span class="evo-avatar evo-avatar-own"><i class="fa-solid fa-user"></i></span>';
+        const thumb = owner.avatar.thumb(ego.avatar);
+        const shown = thumb ? `<img class="evo-avatar" src="${esc(thumb)}" alt="">` : '<span class="evo-avatar evo-avatar-own"><i class="fa-solid fa-user"></i></span>';
+        const key = JSON.stringify(ego.avatar ?? null);
         const grid = gallery === null ? '' : gallery.length
-            ? `<div class="evo-gallery">${gallery.map(m => `<button type="button" class="evo-gallery-pick ${m.id === media ? 'is-on' : ''}" data-act="pick-avatar" data-media="${m.id}">
-                <img src="${esc(CoreAPI.thumbUrl('media', m.id, 96))}" alt="${esc(m.displayName)}" loading="lazy"></button>`).join('')}</div>`
-            : '<p class="evo-hint">This card\'s gallery has no pictures yet.</p>';
+            ? `<div class="evo-gallery">${gallery.map((c, i) => `<button type="button" class="evo-gallery-pick ${JSON.stringify(c.avatar) === key ? 'is-on' : ''}" data-act="pick-avatar" data-choice="${i}">
+                <img src="${esc(c.thumb)}" alt="${esc(c.label)}" loading="lazy"></button>`).join('')}</div>`
+            : `<p class="evo-hint">${esc(owner.avatar.emptyHint)}</p>`;
         return `
-            <div class="evo-avatar-row">${thumb}
+            <div class="evo-avatar-row">${shown}
                 <div class="evo-buttons">
-                    <button type="button" class="cl-btn cl-btn-secondary" data-act="own-avatar" ${media ? '' : 'disabled'}>Card's own</button>
-                    <button type="button" class="cl-btn cl-btn-secondary" data-act="gallery">From the gallery</button>
-                    <label class="cl-btn cl-btn-secondary evo-upload"><i class="fa-solid fa-upload"></i> Upload<input type="file" accept="image/*" data-act="upload" hidden></label>
+                    <button type="button" class="cl-btn cl-btn-secondary" data-act="own-avatar" ${thumb ? '' : 'disabled'}>${esc(owner.avatar.ownLabel)}</button>
+                    <button type="button" class="cl-btn cl-btn-secondary" data-act="gallery">Choose a picture</button>
+                    ${owner.avatar.upload ? '<label class="cl-btn cl-btn-secondary evo-upload"><i class="fa-solid fa-upload"></i> Upload<input type="file" accept="image/*" data-act="upload" hidden></label>' : ''}
                 </div>
             </div>${grid}`;
     }
@@ -150,9 +150,9 @@ export function mountEditor(pane, character, ctx, { bigEditor }) {
                 ${reads(`${p}.entrySources`, ego.entrySources)}
                 ${action(`${p}.entry`, 'Entry Action', 'Asked of the next reply when this Alter Ego takes over.', ego.entryAction, ego.entryConfirm)}
                 ${action(`${p}.exit`, 'Exit Action', 'Asked of the next reply when another Alter Ego takes over from this one.', ego.exitAction, ego.exitConfirm)}
-                <div class="evo-row"><span class="evo-label">Prompt Name</span><input class="cl-input" data-path="${p}.promptName" data-kind="nullable" value="${esc(ego.promptName)}" placeholder="${esc(character.name)}">
-                    <span class="evo-hint">What the prompt says ${esc(character.name)} is going by while this Alter Ego is active.</span></div>
-                <div class="evo-row"><span class="evo-label">Name on messages</span><input class="cl-input" data-path="${p}.displayName" data-kind="nullable" value="${esc(ego.displayName)}" placeholder="${esc(character.name)}"></div>
+                <div class="evo-row"><span class="evo-label">Prompt Name</span><input class="cl-input" data-path="${p}.promptName" data-kind="nullable" value="${esc(ego.promptName)}" placeholder="${esc(owner.name)}">
+                    <span class="evo-hint">What the prompt says ${esc(owner.name)} is going by while this Alter Ego is active.</span></div>
+                <div class="evo-row"><span class="evo-label">Name on messages</span><input class="cl-input" data-path="${p}.displayName" data-kind="nullable" value="${esc(ego.displayName)}" placeholder="${esc(owner.name)}"></div>
                 <div class="evo-row"><span class="evo-label">Avatar on messages</span>${avatarHtml(ego)}</div>
             </div>
         </details>`;
@@ -163,7 +163,7 @@ export function mountEditor(pane, character, ctx, { bigEditor }) {
         const g = (k) => ctx.settings.get(k);
         return `
         <details class="evo-ego">
-            <summary>This card's settings</summary>
+            <summary>This ${owner.noun}'s settings</summary>
             <div class="evo-field-body">
                 <p class="evo-hint">Left blank, a setting follows Settings › Extensions › Evolutia.</p>
                 <div class="evo-row"><span class="evo-label">Window (recent messages Activating Triggers read)</span><input type="number" min="1" max="50" class="cl-input evo-num" data-path="settings.window" data-kind="number" value="${esc(s.window ?? '')}" placeholder="${esc(g('window'))}"></div>
@@ -186,8 +186,8 @@ export function mountEditor(pane, character, ctx, { bigEditor }) {
         const head = `
             <div class="evo-head">
                 <label class="evo-switch"><input type="checkbox" class="cl-switch-input" data-act="toggle" ${on ? 'checked' : ''}><span class="cl-switch" aria-hidden="true"></span>
-                    <span>Use Evolutia on this card</span></label>
-                <span class="evo-hint">On, the card's Description becomes <code>{{evolutia}}</code> and its text is kept; off brings it back.${def ? '' : ' Switching on makes one Field per <code>##</code> heading of the Description.'}</span>
+                    <span>Use Evolutia on this ${owner.noun}</span></label>
+                <span class="evo-hint">On, the ${owner.noun}'s ${owner.descLabel} becomes <code>${owner.macro}</code> and its text is kept; off brings it back.${def ? '' : ` Switching on makes one Field per <code>##</code> heading of the ${owner.descLabel}.`}</span>
             </div>`;
         if (!def) { pane.innerHTML = `<div class="evo-editor">${head}</div>`; return; }
         const ego = def.alterEgos[egoIndex];
@@ -202,7 +202,7 @@ export function mountEditor(pane, character, ctx, { bigEditor }) {
                 ${egoHtml(ego)}
                 <h4 class="evo-section">Fields <span class="evo-hint">in prompt order</span></h4>
                 ${egoIndex === 0 && hasHeadings(sourceDescription()) ? `<button type="button" class="cl-btn cl-btn-secondary" data-act="rebuild">
-                    <i class="fa-solid fa-arrows-rotate"></i> Rebuild Fields from the Description's headings</button>` : ''}
+                    <i class="fa-solid fa-arrows-rotate"></i> Rebuild Fields from the ${owner.descLabel}'s headings</button>` : ''}
                 ${ego.fields.map((f, i) => fieldHtml(f, i, ego.fields.length)).join('') || '<p class="evo-hint">No Fields yet.</p>'}
                 <button type="button" class="cl-btn cl-btn-secondary" data-act="add-field"><i class="fa-solid fa-plus"></i> Field</button>
                 ${settingsHtml()}
@@ -323,40 +323,27 @@ export function mountEditor(pane, character, ctx, { bigEditor }) {
                 return rerender();
             case 'own-avatar': ego.avatar = null; return rerender();
             case 'gallery': return openGallery();
-            case 'pick-avatar': ego.avatar = { media: Number(b.dataset.media) }; return rerender();
+            case 'pick-avatar': ego.avatar = gallery[Number(b.dataset.choice)].avatar; return rerender();
         }
     });
 
     async function openGallery() {
-        try {
-            const res = await CoreAPI.apiRequest(`/characters/${encodeURIComponent(charId)}/media?limit=100&count=false`);
-            const page = await res.json();
-            gallery = (page.items || []).filter(m => m.kind !== 'video');
-        } catch (e) { CoreAPI.showToast(`Could not read the gallery: ${e.message}`, 'error'); gallery = []; }
+        try { gallery = await owner.avatar.choices(); }
+        catch (e) { CoreAPI.showToast(`Could not read the pictures: ${e.message}`, 'error'); gallery = []; }
         rerender();
     }
 
     async function upload(file) {
         try {
-            const res = await CoreAPI.apiRequest(`/characters/${encodeURIComponent(charId)}/media?name=${encodeURIComponent(file.name)}`, 'POST', file,
-                { raw: true, headers: { 'Content-Type': file.type || 'application/octet-stream' } });
-            const body = await res.json();
-            if (!res.ok) throw new Error(body.error || res.status);
-            def.alterEgos[egoIndex].avatar = { media: body.duplicateOf ?? body.id };
+            def.alterEgos[egoIndex].avatar = await owner.avatar.upload(file);
             gallery = null;
             rerender();
         } catch (e) { CoreAPI.showToast(`Could not upload the picture: ${e.message}`, 'error'); }
     }
 
-    // Card writes go through the app's own character.update, so the details know the edit for their own.
-    const update = async (fields) => {
-        const done = await ctx.commands.run('character.update', { id: charId, fields, source: 'evolutia' });
-        if (done?.ok === false) throw new Error('the card write was refused');
-    };
-
     async function save() {
         try {
-            await update({ 'extensions.evolutia.definition': def });
+            await owner.saveDefinition(def);
             saved = JSON.stringify(def);
             markDirty();
             CoreAPI.showToast('Evolutia saved', 'success');
@@ -388,33 +375,15 @@ export function mountEditor(pane, character, ctx, { bigEditor }) {
         };
     }
 
-    // The details paint the Description, and the Edit form takes it, only when the card opens; re-opening
-    // rebuilds every tab (a flash), so the two are brought up to the new Description in place instead. No door
-    // for either: absent markup is skipped, and a Description box with the reader's own typing is left alone.
-    function showDescription(was, now) {
-        const shown = document.getElementById('modalDescription');
-        if (shown) shown.innerHTML = CoreAPI.safePurify(CoreAPI.formatRichText(now, character.name));
-        const box = document.getElementById('editDescription');
-        if (box && box.value !== now) {
-            if (box.value === was) box.value = now;
-            else CoreAPI.showToast('The Edit tab holds your unsaved Description: re-open the card before saving it', 'warning');
-        }
-    }
-
     async function toggle(want) {
         if (!want && dirty() && !confirm('Switch Evolutia off? Your unsaved changes are saved first.')) { render(); return; }
         try {
             if (dirty()) await save();
-            let fields = switchPatch({ ...card, extensions: { evolutia: { ...card.extensions.evolutia, definition: def } } }, want);
-            // Fields already saved, and a Description with headings (made after them, likely): offer to read them again
-            if (fields && want && def && hasHeadings(card.description) && confirm(REBUILD_ASK)) {
-                fields = { ...fields, 'extensions.evolutia.definition': rebuildFromDescription(def, card.description) };
-            }
-            if (fields) {
-                await update(fields);
-                showDescription(card.description, fields.description);
-            }
-            CoreAPI.showToast(want ? 'Evolutia is on: the Description is now {{evolutia}}' : 'Evolutia is off: the Description is back', 'success');
+            // Fields already saved, and a description with headings (made after them, likely): offer to read them again
+            const rebuilt = want && !on && def && hasHeadings(got.description) && confirm(REBUILD_ASK)
+                ? rebuildFromDescription(def, got.description) : null;
+            await owner.setOn(want, def, rebuilt);
+            CoreAPI.showToast(want ? `Evolutia is on: the ${owner.descLabel} is now ${owner.macro}` : `Evolutia is off: the ${owner.descLabel} is back`, 'success');
             await load();
         } catch (e) { CoreAPI.showToast(`Could not switch Evolutia: ${e.message}`, 'error'); render(); }
     }

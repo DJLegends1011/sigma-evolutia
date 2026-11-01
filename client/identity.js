@@ -19,7 +19,9 @@ export function createIdentity(ctx) {
         }
         if (img) {
             el.dataset.evoSrc ??= img.getAttribute('src') || '';
-            const src = who?.avatar?.media ? CoreAPI.thumbUrl('media', who.avatar.media, 192) : el.dataset.evoSrc;
+            const src = who?.avatar?.media ? CoreAPI.thumbUrl('media', who.avatar.media, 192)
+                : who?.avatar?.persona ? CoreAPI.thumbUrl('persona', who.avatar.persona, 192)
+                : el.dataset.evoSrc;
             if (img.getAttribute('src') !== src) img.setAttribute('src', src);
         }
     }
@@ -30,11 +32,12 @@ export function createIdentity(ctx) {
 
     async function refresh() {
         const mine = ++reading;
-        if (!chatId || !charId) { identities = {}; drawAll(); return; }
+        if (!chatId) { identities = {}; drawAll(); return; }
         try {
-            const state = await ctx.server.call(`/chats/${encodeURIComponent(chatId)}/state?charId=${encodeURIComponent(charId)}`);
+            const state = await ctx.server.call(`/chats/${encodeURIComponent(chatId)}/state${charId ? `?charId=${encodeURIComponent(charId)}` : ''}`);
             if (mine !== reading) return;
-            identities = state.on ? state.identities : {};
+            // the character's replies and the user's messages, each by its own side's Alter Egos
+            identities = { ...(state.on ? state.identities : {}), ...(state.persona?.identities || {}) };
         } catch { if (mine === reading) identities = {}; }
         drawAll();
     }
@@ -48,6 +51,7 @@ export function createIdentity(ctx) {
         ctx.events.on(name, (e) => { if (e.chatId === chatId) refreshSoon(); });
     }
     ctx.events.on('character.updated', ({ ids }) => { if (ids.includes(charId)) refreshSoon(); });
+    ctx.events.on('persona.changed', () => refreshSoon());
 
     return { refresh, refreshSoon };
 }
