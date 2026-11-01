@@ -85,18 +85,20 @@ export function mountEditor(pane, character, ctx, { bigEditor }) {
         <div class="evo-label-row"><span class="evo-label">${label}</span>
             <button type="button" class="evo-expand" data-act="expand" data-for="${path}" data-label="${esc(label)}" title="Expand editor"><i class="fa-solid fa-expand"></i></button></div>`;
 
+    // What a Field's summary line says about it, kept current as it is edited.
+    const pillsHtml = (f) => [
+        f.startsOn ? 'starts on' : 'starts off',
+        f.activating.keywords.length ? 'activating' : '',
+        f.enabling.keywords.length ? 'enabling' : '',
+        f.disabling.keywords.length ? 'disabling' : '',
+        f.entryAction || f.exitAction ? 'actions' : '',
+    ].filter(Boolean).map(t => `<span class="evo-pill">${t}</span>`).join('');
+
     function fieldHtml(f, fi, count) {
         const p = `alterEgos.${egoIndex}.fields.${fi}`;
-        const pills = [
-            f.startsOn ? 'starts on' : 'starts off',
-            f.activating.keywords.length ? 'activating' : '',
-            f.enabling.keywords.length ? 'enabling' : '',
-            f.disabling.keywords.length ? 'disabling' : '',
-            f.entryAction || f.exitAction ? 'actions' : '',
-        ].filter(Boolean).map(t => `<span class="evo-pill">${t}</span>`).join('');
         return `
         <details class="evo-field" data-field="${fi}">
-            <summary><span class="evo-field-name">${esc(f.name || 'Untitled')}</span>${pills}</summary>
+            <summary><span class="evo-field-name">${esc(f.name || 'Untitled')}</span><span class="evo-pills">${pillsHtml(f)}</span></summary>
             <div class="evo-field-body">
                 <div class="evo-row"><span class="evo-label">Name</span><input class="cl-input" data-path="${p}.name" value="${esc(f.name)}"></div>
                 <div class="evo-row">${labelWithExpand('Content', `${p}.content`)}
@@ -183,11 +185,6 @@ export function mountEditor(pane, character, ctx, { bigEditor }) {
         pane.innerHTML = `
             <div class="evo-editor">
                 ${head}
-                <div class="evo-save ${dirty() ? 'is-dirty' : ''}">
-                    <span class="evo-hint">${dirty() ? 'Unsaved changes' : 'Saved'}</span>
-                    <button type="button" class="cl-btn cl-btn-secondary" data-act="revert" ${dirty() ? '' : 'disabled'}>Revert</button>
-                    <button type="button" class="cl-btn" data-act="save" ${dirty() ? '' : 'disabled'}><i class="fa-solid fa-floppy-disk"></i> Save</button>
-                </div>
                 <div class="evo-egos">
                     ${def.alterEgos.map((e, i) => `<button type="button" class="evo-chip ${i === egoIndex ? 'is-on' : ''}" data-act="ego" data-ego="${i}">${esc(e.name || 'Untitled')}</button>`).join('')}
                     <button type="button" class="evo-chip" data-act="add-ego" title="New Alter Ego, copied from this one"><i class="fa-solid fa-plus"></i> Alter Ego</button>
@@ -200,6 +197,11 @@ export function mountEditor(pane, character, ctx, { bigEditor }) {
                 ${ego.fields.map((f, i) => fieldHtml(f, i, ego.fields.length)).join('') || '<p class="evo-hint">No Fields yet.</p>'}
                 <button type="button" class="cl-btn cl-btn-secondary" data-act="add-field"><i class="fa-solid fa-plus"></i> Field</button>
                 ${settingsHtml()}
+                <div class="evo-save ${dirty() ? 'is-dirty' : ''}">
+                    <span class="evo-hint">${dirty() ? 'Unsaved changes' : 'Saved'}</span>
+                    <button type="button" class="cl-btn cl-btn-secondary" data-act="revert" ${dirty() ? '' : 'disabled'}>Revert</button>
+                    <button type="button" class="cl-btn" data-act="save" ${dirty() ? '' : 'disabled'}><i class="fa-solid fa-floppy-disk"></i> Save</button>
+                </div>
             </div>`;
         // the app's own dropdowns: a bare <select> keeps the browser's look
         for (const select of pane.querySelectorAll('select')) CoreAPI.initCustomSelect(select);
@@ -243,6 +245,8 @@ export function mountEditor(pane, character, ctx, { bigEditor }) {
         else if (kind === 'number') setPath(def, path, t.value === '' ? null : Number(t.value));
         else if (path.endsWith('.mode')) setPath(def, path.slice(0, -5), { keywords: getPath(def, path.slice(0, -5))?.keywords || [], mode: t.value });
         else setPath(def, path, t.value);
+        const fieldEl = t.closest('.evo-field');
+        if (fieldEl) fieldEl.querySelector('.evo-pills').innerHTML = pillsHtml(def.alterEgos[egoIndex].fields[Number(fieldEl.dataset.field)]);
         if (path.endsWith('.name')) {
             const chip = pane.querySelector('.evo-chip.is-on');
             const field = t.closest('.evo-field')?.querySelector('.evo-field-name');

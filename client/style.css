@@ -18,10 +18,12 @@
 .evo-danger { color: var(--cl-danger, var(--cl-warning)); }
 .evo-section { margin: var(--space-sm) 0 0; font-size: var(--font-sm); }
 
-.evo-save { display: flex; align-items: center; gap: var(--space-xs); position: sticky; top: 0; z-index: 1;
-    padding: var(--space-xs); border-radius: var(--radius-md); background: var(--cl-ghost-faint); }
+/* a sticky footer, as the app's own modals keep their actions: the tab strip owns the top */
+.evo-save { display: flex; align-items: center; gap: var(--space-xs); position: sticky; bottom: 0; z-index: 2;
+    padding: var(--space-xs); padding-bottom: max(var(--space-xs), var(--safe-bottom, 0px)); border-radius: var(--radius-md);
+    background: var(--bg-secondary); border: 1px solid var(--cl-border); }
 .evo-save .evo-hint { flex: 1; }
-.evo-save.is-dirty { background: var(--cl-accent-tint); border: 1px solid var(--cl-accent-tint-border); }
+.evo-save.is-dirty { border-color: var(--cl-accent-tint-border); box-shadow: inset 0 0 0 999px var(--cl-accent-tint); }
 
 .evo-egos { display: flex; flex-wrap: wrap; gap: var(--space-2xs); }
 .evo-chip { display: inline-flex; align-items: center; gap: var(--space-2xs); padding: var(--space-2xs) var(--space-sm);
