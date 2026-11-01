@@ -35,10 +35,14 @@ function avatarModeOf(avatar) {
 }
 
 // The editor of one owner's Field Definitions (a card's or a persona's, see owners.js).
-export function mountEditor(pane, owner, ctx, { bigEditor, onChanged, liveSide = null, onLiveSwitch = null } = {}) {
+export function mountEditor(hostPane, owner, ctx, { bigEditor, onChanged, liveSide = null, onLiveSwitch = null } = {}) {
     const { CoreAPI } = ctx;
     const esc = (s) => CoreAPI.escapeHtml(String(s ?? ''));
-    let on = false, def = null, got = null, saved = '', egoIndex = 0, gallery = null, charList = null;
+    // Isolate listeners on a fresh child node so host-reused panes (like #pane-ext.evolutia.evolutia
+    // across Character Details opens or extension reloads) never accumulate duplicate event handlers.
+    const pane = document.createElement('div');
+    hostPane.replaceChildren(pane);
+    let on = false, def = null, got = null, saved = '', egoIndex = 0, gallery = null, charList = null, saving = false;
 
     const dirty = () => JSON.stringify(def) !== saved;
     const sourceDescription = () => got?.source ?? '';
@@ -86,7 +90,7 @@ export function mountEditor(pane, owner, ctx, { bigEditor, onChanged, liveSide =
         </div>`;
 
     const labelWithExpand = (label, path) => `
-        <div class="evo-row-between"><span class="evo-label">${label}</span>
+        <div class="evo-label-row"><span class="evo-label">${label}</span>
             <button type="button" class="evo-expand" data-act="expand" data-for="${path}" data-label="${esc(label)}" title="Expand full-screen editor"><i class="fa-solid fa-expand"></i></button></div>`;
 
     function fieldSummaryBadges(f, liveField) {
@@ -142,18 +146,8 @@ export function mountEditor(pane, owner, ctx, { bigEditor, onChanged, liveSide =
                     <div class="evo-details-body">
                         <div class="evo-row">
                             <div class="evo-ego-select-col">
-                                <span class="evo-label">Activating Keywords (In Prompt While Matching Window; Blank = Always Admitted)</span>
+                                <span class="evo-label">Activating Keywords (In Window; Blank = Always Admitted)</span>
                                 <input type="text" class="glass-input" data-path="${p}.activating" data-kind="keywords" value="${esc(keywordsText(f.activating))}" placeholder="comma-separated keywords or /regex/">
-                            </div>
-                        </div>
-                        <div class="evo-row">
-                            <div class="evo-ego-select-col">
-                                <span class="evo-label">Enabling Keywords (Switches Field On)</span>
-                                <input type="text" class="glass-input" data-path="${p}.enabling" data-kind="keywords" value="${esc(keywordsText(f.enabling))}" placeholder="e.g. stabbed, wounded, /regex/">
-                            </div>
-                            <div class="evo-ego-select-col">
-                                <span class="evo-label">Disabling Keywords (Switches Field Off)</span>
-                                <input type="text" class="glass-input" data-path="${p}.disabling" data-kind="keywords" value="${esc(keywordsText(f.disabling))}" placeholder="e.g. healed, bandaged">
                             </div>
                             <div class="evo-ego-select-col" style="max-width:135px;">
                                 <span class="evo-label">Match Mode</span>
@@ -163,18 +157,28 @@ export function mountEditor(pane, owner, ctx, { bigEditor, onChanged, liveSide =
                                 </select>
                             </div>
                         </div>
+                        <div class="evo-row">
+                            <div class="evo-ego-select-col">
+                                <span class="evo-label">Enabling Keywords (Turns Field On)</span>
+                                <input type="text" class="glass-input" data-path="${p}.enabling" data-kind="keywords" value="${esc(keywordsText(f.enabling))}" placeholder="e.g. what's wrong, stabbed, /regex/">
+                            </div>
+                            <div class="evo-ego-select-col">
+                                <span class="evo-label">Disabling Keywords (Turns Field Off)</span>
+                                <input type="text" class="glass-input" data-path="${p}.disabling" data-kind="keywords" value="${esc(keywordsText(f.disabling))}" placeholder="e.g. healed, bandaged">
+                            </div>
+                        </div>
                         <div class="evo-row-between">
                             ${reads(`${p}.sources`, f.sources)}
                             ${sw(`${p}.stripTriggers`, !!f.stripTriggers, 'Strip matched trigger keyword from sent message')}
                         </div>
                         <div class="evo-row">
                             <div class="evo-ego-select-col">
-                                ${labelWithExpand('Entry Action (Asked when switched on)', `${p}.entryAction`)}
+                                ${labelWithExpand('Entry Action (When Switched On)', `${p}.entryAction`)}
                                 <textarea class="glass-input" rows="2" data-path="${p}.entryAction" data-kind="nullable" placeholder="Optional instruction for the next reply...">${esc(f.entryAction)}</textarea>
                                 <input type="text" class="glass-input" data-path="${p}.entryConfirm" data-kind="keywords" value="${esc(keywordsText(f.entryConfirm))}" placeholder="Confirm keywords (blank = any reply confirms)">
                             </div>
                             <div class="evo-ego-select-col">
-                                ${labelWithExpand('Exit Action (Asked when switched off)', `${p}.exitAction`)}
+                                ${labelWithExpand('Exit Action (When Switched Off)', `${p}.exitAction`)}
                                 <textarea class="glass-input" rows="2" data-path="${p}.exitAction" data-kind="nullable" placeholder="Optional instruction when turning off...">${esc(f.exitAction)}</textarea>
                                 <input type="text" class="glass-input" data-path="${p}.exitConfirm" data-kind="keywords" value="${esc(keywordsText(f.exitConfirm))}" placeholder="Confirm keywords (blank = any reply confirms)">
                             </div>
@@ -639,6 +643,8 @@ export function mountEditor(pane, owner, ctx, { bigEditor, onChanged, liveSide =
     }
 
     async function save() {
+        if (saving) return;
+        saving = true;
         try {
             const cleanDef = structuredClone(def);
             for (const e of cleanDef.alterEgos || []) delete e._uiAvatarMode;
@@ -648,7 +654,11 @@ export function mountEditor(pane, owner, ctx, { bigEditor, onChanged, liveSide =
             markDirty();
             CoreAPI.showToast('Evolutia saved', 'success');
             onChanged?.();
-        } catch (e) { CoreAPI.showToast(`Could not save: ${e.message}`, 'error'); }
+        } catch (e) {
+            CoreAPI.showToast(`Could not save: ${e.message}`, 'error');
+        } finally {
+            saving = false;
+        }
     }
 
     function expand(path, label) {

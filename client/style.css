@@ -499,12 +499,21 @@
     color: #ddd6fe;
 }
 
+.evo-label-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+    flex-wrap: nowrap;
+}
+
 .evo-expand {
     border: none;
     background: none;
     color: var(--text-secondary, #9aa4bf);
     cursor: pointer;
     padding: 2px 4px;
+    flex-shrink: 0;
 }
 
 .evo-expand:hover {
