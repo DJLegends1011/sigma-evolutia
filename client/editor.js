@@ -21,7 +21,7 @@ function setPath(obj, path, value) {
     target[last] = value;
 }
 
-export function mountEditor(pane, character, ctx) {
+export function mountEditor(pane, character, ctx, { bigEditor }) {
     const { CoreAPI } = ctx;
     const esc = (s) => CoreAPI.escapeHtml(String(s ?? ''));
     const call = ctx.server.call;
@@ -73,12 +73,17 @@ export function mountEditor(pane, character, ctx) {
 
     const action = (path, label, hint, text, confirm) => `
         <div class="evo-action">
-            <span class="evo-label">${label}</span>
-            <textarea class="cl-input" rows="2" data-path="${path}Action" data-kind="nullable" placeholder="Optional">${esc(text)}</textarea>
+            ${labelWithExpand(label, `${path}Action`)}
+            <textarea class="glass-input evo-long" rows="2" data-path="${path}Action" data-kind="nullable" placeholder="Optional">${esc(text)}</textarea>
             <span class="evo-hint">${hint}</span>
             <span class="evo-label evo-sub">Confirmed by a reply containing</span>
             <textarea class="cl-input evo-keywords" rows="1" data-path="${path}Confirm" data-kind="keywords" placeholder="Any reply counts">${esc(keywordsText(confirm))}</textarea>
         </div>`;
+
+    // A label with the Edit tab's expand button: long text is edited full screen, as the Edit tab does it.
+    const labelWithExpand = (label, path) => `
+        <div class="evo-label-row"><span class="evo-label">${label}</span>
+            <button type="button" class="evo-expand" data-act="expand" data-for="${path}" data-label="${esc(label)}" title="Expand editor"><i class="fa-solid fa-expand"></i></button></div>`;
 
     function fieldHtml(f, fi, count) {
         const p = `alterEgos.${egoIndex}.fields.${fi}`;
@@ -94,8 +99,8 @@ export function mountEditor(pane, character, ctx) {
             <summary><span class="evo-field-name">${esc(f.name || 'Untitled')}</span>${pills}</summary>
             <div class="evo-field-body">
                 <div class="evo-row"><span class="evo-label">Name</span><input class="cl-input" data-path="${p}.name" value="${esc(f.name)}"></div>
-                <div class="evo-row"><span class="evo-label">Content</span>
-                    <textarea class="cl-input evo-content" rows="5" data-path="${p}.content">${esc(f.content)}</textarea></div>
+                <div class="evo-row">${labelWithExpand('Content', `${p}.content`)}
+                    <textarea class="glass-input evo-long" rows="4" data-path="${p}.content">${esc(f.content)}</textarea></div>
                 ${sw(`${p}.startsOn`, f.startsOn, 'On at the start of a chat')}
                 ${reads(`${p}.sources`, f.sources)}
                 ${trigger(`${p}.activating`, 'Activating Trigger', 'While set, the Field is in the prompt only when one of these is in the recent messages (the Window).', f.activating)}
@@ -198,10 +203,10 @@ export function mountEditor(pane, character, ctx) {
             </div>`;
         // the app's own dropdowns: a bare <select> keeps the browser's look
         for (const select of pane.querySelectorAll('select')) CoreAPI.initCustomSelect(select);
-        for (const box of pane.querySelectorAll('textarea')) fit(box);
+        for (const box of pane.querySelectorAll('textarea.evo-keywords')) fit(box);
     }
 
-    // A text box as tall as its text (where the browser has no field-sizing), so it never scrolls inside.
+    // A keyword box as tall as its text (where the browser has no field-sizing), so it never scrolls inside.
     const sizesItself = typeof CSS !== 'undefined' && CSS.supports?.('field-sizing', 'content');
     function fit(box) {
         if (sizesItself) return;
@@ -228,7 +233,7 @@ export function mountEditor(pane, character, ctx) {
     // ---- edits
 
     pane.addEventListener('input', (e) => {
-        if (e.target.tagName === 'TEXTAREA') fit(e.target);
+        if (e.target.matches?.('textarea.evo-keywords')) fit(e.target);
         const path = e.target.dataset?.path;
         if (!path || !def) return;
         const t = e.target, kind = t.dataset.kind;
@@ -248,7 +253,7 @@ export function mountEditor(pane, character, ctx) {
     });
 
     pane.addEventListener('toggle', (e) => {
-        if (e.target.open) for (const box of e.target.querySelectorAll('textarea')) fit(box);
+        if (e.target.open) for (const box of e.target.querySelectorAll('textarea.evo-keywords')) fit(box);
     }, true);
 
     pane.addEventListener('change', async (e) => {
@@ -301,6 +306,7 @@ export function mountEditor(pane, character, ctx) {
                 [ego.fields[fi], ego.fields[to]] = [ego.fields[to], ego.fields[fi]];
                 return rerender();
             }
+            case 'expand': return expand(b.dataset.for, b.dataset.label);
             case 'rebuild':
                 if (!confirm(REBUILD_ASK)) return;
                 def = rebuildFromDescription(def, sourceDescription());
@@ -346,6 +352,31 @@ export function mountEditor(pane, character, ctx) {
             markDirty();
             CoreAPI.showToast('Evolutia saved', 'success');
         } catch (e) { CoreAPI.showToast(`Could not save: ${e.message}`, 'error'); }
+    }
+
+    // The full-screen editor: the box's text in the app's own expanded-field look; Apply puts it back in the box.
+    function expand(path, label) {
+        const box = pane.querySelector(`textarea[data-path="${CSS.escape(path)}"]`);
+        if (!box) return;
+        const body = bigEditor.open({ title: label });
+        body.classList.add('expand-field-body');
+        body.innerHTML = `
+            <textarea class="glass-input expand-field-textarea evo-big"></textarea>
+            <div class="evo-buttons evo-big-buttons">
+                <button type="button" class="cl-btn cl-btn-secondary" data-big="cancel">Cancel</button>
+                <button type="button" class="cl-btn cl-btn-primary" data-big="apply"><i class="fa-solid fa-check"></i> Apply</button>
+            </div>`;
+        const big = body.querySelector('textarea');
+        big.value = box.value;
+        big.focus();
+        body.onclick = (e) => {
+            const which = e.target.closest('[data-big]')?.dataset.big;
+            if (which === 'apply') {
+                box.value = big.value;
+                box.dispatchEvent(new Event('input', { bubbles: true }));
+            }
+            if (which) bigEditor.close({ force: true });
+        };
     }
 
     // The details paint the Description, and the Edit form takes it, only when the card opens; re-opening

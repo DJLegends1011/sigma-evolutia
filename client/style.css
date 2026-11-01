@@ -10,7 +10,6 @@
 .evo-row, .evo-trigger, .evo-action { display: flex; flex-direction: column; gap: var(--space-2xs); }
 .evo-trigger-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-xs); }
 .evo-mode { max-width: 10rem; }
-.evo-content { min-height: 6rem; }
 .evo-keywords { min-height: 2.2rem; }
 .evo-num { max-width: 6rem; }
 .evo-reads { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-sm); font-size: var(--font-sm); }
@@ -64,6 +63,11 @@
     padding: var(--space-xs); border-radius: var(--radius-sm); margin: var(--space-2xs) 0 var(--space-sm); }
 .evo-picker { display: flex; flex-direction: column; gap: var(--space-xs); padding: var(--space-sm); }
 
-/* Text boxes grow to their text and never scroll inside, so a swipe on a phone scrolls the tab, not the box. */
-.evo-editor textarea { field-sizing: content; overflow: hidden; resize: none; min-height: 2.6rem; }
-.evo-editor .evo-content { min-height: 6rem; }
+/* Long text: compact boxes with an expand button to a full-screen editor, as the Edit tab does it, so most of
+   the tab stays free to swipe. Keyword lists are short: they grow to their text and never scroll inside. */
+.evo-editor textarea.evo-keywords { field-sizing: content; overflow: hidden; resize: none; min-height: 2.6rem; }
+.evo-label-row { display: flex; align-items: center; justify-content: space-between; gap: var(--space-xs); }
+.evo-expand { border: none; background: none; color: var(--text-muted); cursor: pointer; padding: var(--space-2xs); }
+.evo-expand:hover { color: var(--text-primary); }
+.evo-big { flex: 1; }
+.evo-big-buttons { justify-content: flex-end; margin-top: var(--space-sm); }

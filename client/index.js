@@ -14,11 +14,13 @@ export default {
             render: (row) => (row.ext?.evolutia?.on ? { icon: 'fa-masks-theater', label: 'Evolutia', tone: 'accent' } : null),
         });
 
+        // the full-screen editor long text opens in, one for every card's tab
+        const bigEditor = ctx.ui.dialog({ id: 'expand', label: 'Edit', icon: 'fa-expand', className: 'expand-field-modal', size: true });
         ctx.ui.contribute('character.details.tab', {
             id: 'evolutia',
             label: 'Evolutia',
             icon: 'fa-masks-theater',
-            render: (pane, { character }) => { mountEditor(pane, character, ctx); },
+            render: (pane, { character }) => { mountEditor(pane, character, ctx, { bigEditor }); },
         });
 
         const identity = createIdentity(ctx);
