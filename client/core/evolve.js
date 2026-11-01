@@ -110,25 +110,31 @@ function step(def, prev, messages, i, opts) {
     return st;
 }
 
+// Whether a change takes effect in the reply asked to narrate it (ADR 0007): on unless switched off.
+const withAction = (x) => x?.withAction !== false;
+
 // What the prompt says when its history ends at message k (-1 for none).
 export function promptFor(def, messages, timeline, k, opts) {
     const st = timeline[k + 1];
-    const ego = egoById(def, st.ego);
+    const from = egoById(def, st.ego);
+    const to = st.egoMove ? egoById(def, st.egoMove.to) : null;
+    // an Alter Ego change already in effect for the reply narrating it shows the new Alter Ego
+    const ego = to && withAction(to) ? to : from;
     const parts = [], actions = [], rows = [];
     if (ego.promptName) parts.push(`${opts.charName} is currently going by: ${ego.promptName}.`);
     for (const f of ego.fields) {
         const phase = st.fields[ego.id][f.id].phase;
         const gated = f.activating.keywords.length > 0;
         const admitted = !gated || triggerMatches(f.activating, windowText(messages, k, opts.window, f.sources));
-        const inPrompt = (phase === 'on' || phase === 'exiting') && admitted;
+        const present = phase === 'on' || (phase === 'entering' && withAction(f)) || (phase === 'exiting' && !withAction(f));
+        const inPrompt = present && admitted;
         if (inPrompt) parts.push(`## ${f.name}\n${f.content}`);
-        rows.push({ id: f.id, inPrompt });
+        rows.push({ ego: ego.id, id: f.id, inPrompt });
         if (phase === 'entering') actions.push(f.entryAction);
         if (phase === 'exiting') actions.push(f.exitAction);
     }
-    if (st.egoMove) {
-        const to = egoById(def, st.egoMove.to);
-        if (ego.exitAction) actions.push(ego.exitAction);
+    if (to) {
+        if (from.exitAction) actions.push(from.exitAction);
         if (to.entryAction) actions.push(to.entryAction);
     }
     return {

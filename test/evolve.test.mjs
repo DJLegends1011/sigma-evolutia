@@ -61,11 +61,11 @@ test('an Activating Trigger admits its Field only while it matches within the Wi
 const secretDef = (more = {}) => ({ alterEgos: [ego('human', 'Human Kael', [
     field('secret', 'The Secret', 'Kael has admitted he is a werewolf.', {
         enabling: trig('what are you'), sources: { user: true, char: false },
-        entryAction: 'Kael confesses that he is a werewolf.', ...more,
+        entryAction: 'Kael confesses that he is a werewolf.', withAction: false, ...more,
     }),
 ])] });
 
-test('an Entry Action is asked for in the next reply, and the content enters the prompt after it', () => {
+test('with Content With Action off, an Entry Action is asked for in the next reply, and the content enters after it', () => {
     const asked = promptAfter(secretDef(), [you('Kael, what are you?')]);
     assert.equal(asked.evolutia, '');
     assert.equal(asked.actionBlock, 'In your next reply, make this happen: Kael confesses that he is a werewolf.');
@@ -86,11 +86,11 @@ test('a reply without a Confirm Keyword does not count: the Action is asked agai
     assert.equal(never.actionBlock, '');
 });
 
-test('an Exit Action keeps the content in the prompt while it is asked for, then the content leaves', () => {
+test('with Content With Action off, an Exit Action keeps the content in the prompt while it is asked for, then it leaves', () => {
     const def = { alterEgos: [ego('human', 'Human Kael', [
         field('injury', 'Injury', 'A fresh wound on his side.', {
             startsOn: true, disabling: trig('healed'),
-            exitAction: 'Kael notices his wound has closed.', exitConfirm: trig('closed', 'scar'),
+            exitAction: 'Kael notices his wound has closed.', exitConfirm: trig('closed', 'scar'), withAction: false,
         }),
     ])] };
     const asked = promptAfter(def, [you('Your wound looks healed.')]);
@@ -124,11 +124,11 @@ const wolfDef = () => ({ alterEgos: [
     ], {
         entry: trig('full moon'), promptName: 'the Werewolf', displayName: 'Werewolf Kael',
         entryAction: 'Kael transforms into a huge black wolf.', entryConfirm: trig('howl', 'fur'),
-        exitAction: 'Kael turns back into a man.',
+        exitAction: 'Kael turns back into a man.', withAction: false,
     }),
 ] });
 
-test('an Alter Ego Entry Trigger asks for the change, and the new Alter Ego takes over once a reply confirms it', () => {
+test('with Content With Action off, an Alter Ego Entry Trigger asks for the change, and the new Alter Ego takes over once a reply confirms it', () => {
     const chat = [you('You got stabbed!'), kael('It is nothing.'), you('Look, the full moon.')];
     const asked = promptAfter(wolfDef(), chat);
     assert.equal(asked.evolutia, '## Injury\nA fresh wound on his side.');
@@ -166,4 +166,37 @@ test('the reply that carries an Alter Ego change still shows the old Display Ide
     const timeline = deriveTimeline(wolfDef(), chat, OPTS);
     assert.deepEqual(identityFor(wolfDef(), timeline, 1, OPTS), { name: 'Kael', avatar: null });
     assert.deepEqual(identityFor(wolfDef(), timeline, 3, OPTS), { name: 'Werewolf Kael', avatar: null });
+});
+
+// ---- Content With Action (ADR 0007): the change takes effect in the reply that narrates it
+
+test('by default an Entry Action brings its Field\'s content into the same prompt', () => {
+    const def = secretDef({ withAction: undefined });
+    const asked = promptAfter(def, [you('Kael, what are you?')]);
+    assert.equal(asked.evolutia, '## The Secret\nKael has admitted he is a werewolf.');
+    assert.equal(asked.actionBlock, 'In your next reply, make this happen: Kael confesses that he is a werewolf.');
+});
+
+test('by default an Exit Action takes its Field\'s content out of the same prompt', () => {
+    const def = { alterEgos: [ego('human', 'Human Kael', [
+        field('injury', 'Injury', 'A fresh wound on his side.', { startsOn: true, disabling: trig('healed'), exitAction: 'Kael notices his wound has closed.' }),
+    ])] };
+    const asked = promptAfter(def, [you('Your wound looks healed.')]);
+    assert.equal(asked.evolutia, '');
+    assert.equal(asked.actionBlock, 'In your next reply, make this happen: Kael notices his wound has closed.');
+});
+
+test('by default the reply narrating an Alter Ego change already has the new Alter Ego\'s Fields and Prompt Name', () => {
+    const def = wolfDef();
+    def.alterEgos[1].withAction = true;
+    const asked = promptAfter(def, [you('Look, the full moon.')]);
+    assert.equal(asked.evolutia, 'Kael is currently going by: the Werewolf.\n\n## Form\nA huge black wolf.');
+    assert.equal(asked.actionBlock, 'In your next reply, make this happen: Kael transforms into a huge black wolf.');
+});
+
+test('a change never confirmed is undone with its content, Content With Action or not', () => {
+    const def = secretDef({ withAction: undefined, entryConfirm: trig('werewolf') });
+    const never = promptAfter(def, [you('Kael, what are you?'), kael('Just a human.'), you('Liar.'), kael('He walks away.')]);
+    assert.equal(never.evolutia, '');
+    assert.equal(never.actionBlock, '');
 });

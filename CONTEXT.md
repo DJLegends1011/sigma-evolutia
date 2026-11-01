@@ -37,11 +37,15 @@ A Trigger that switches a Field on, and it stays on afterwards. Enabling and Dis
 A Trigger that switches a Field off, and it stays off afterwards.
 
 **Entry Action**:
-An instruction put in the prompt for one turn when a Field or Alter Ego is switched on ("Kael transforms into a werewolf"). Its content enters the prompt only after that turn.
+An instruction put in the prompt for one turn when a Field or Alter Ego is switched on ("Kael transforms into a werewolf"). By default its content enters the prompt with it, so the reply narrating the change knows what it changes into; see Content With Action.
 _Avoid_: Trigger Action, transition prompt
 
 **Exit Action**:
-An instruction put in the prompt for one turn when a Field or Alter Ego is switched off ("Kael reverts to human"). Its content leaves the prompt after that turn.
+An instruction put in the prompt for one turn when a Field or Alter Ego is switched off ("Kael reverts to human"). By default its content leaves the prompt with it.
+
+**Content With Action**:
+Whether a Field's or Alter Ego's change takes effect in the reply that narrates it (the default) or only once that reply confirms it. Off suits a slow reveal the model must not know before it commits.
+_Avoid_: content timing, delayed content
 
 **Confirm Keywords**:
 Keywords on an Entry or Exit Action that a character reply must contain for the Action to count as done. Without them, any reply counts.

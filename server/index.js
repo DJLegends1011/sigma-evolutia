@@ -177,7 +177,7 @@ export function register(router, ctx) {
         const view = (definition, side) => {
             const { opts, messages, timeline, said } = run(db, h, definition, side);
             const now = timeline.at(-1);
-            const inPrompt = new Map(said.rows.map(r => [r.id, r.inPrompt]));
+            const inPrompt = new Map(said.rows.map(r => [`${r.ego}/${r.id}`, r.inPrompt]));
             const writer = side === 'persona' ? 'user' : 'char';
             const identities = {};
             messages.forEach((m, i) => { if (m.role === writer) identities[h.seqs[i]] = identityFor(definition, timeline, i, opts); });
@@ -187,7 +187,7 @@ export function register(router, ctx) {
                 egoMove: now.egoMove ? egoView(definition.alterEgos.find(e => e.id === now.egoMove.to)) : null,
                 egos: definition.alterEgos.map(e => ({
                     ...egoView(e),
-                    fields: e.fields.map(f => ({ id: f.id, name: f.name, phase: now.fields[e.id][f.id].phase, inPrompt: e.id === now.ego && !!inPrompt.get(f.id) })),
+                    fields: e.fields.map(f => ({ id: f.id, name: f.name, phase: now.fields[e.id][f.id].phase, inPrompt: !!inPrompt.get(`${e.id}/${f.id}`) })),
                 })),
                 evolutia: h.expand(said.evolutia),
                 actionBlock: h.expand(said.actionBlock),

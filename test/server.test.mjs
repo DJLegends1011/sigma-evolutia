@@ -56,7 +56,7 @@ const setChat = async (chatId, messages) => { const r = await me.api(`/chats/${c
 
 const secret = () => human([field('secret', 'The Secret', 'Kael has admitted to {{user}} that he is a werewolf.', {
     enabling: trig('what are you'), sources: { user: true, char: false },
-    entryAction: 'Kael confesses that he is a werewolf.', entryConfirm: trig('werewolf'),
+    entryAction: 'Kael confesses that he is a werewolf.', entryConfirm: trig('werewolf'), withAction: false,
 })]);
 
 test('a Trigger in a message asks for the Entry Action next to the reply, and a confirming reply brings the Field in', async () => {
@@ -166,7 +166,7 @@ test('switching Evolutia on for a persona puts its Fields where its description 
 
 const glowing = () => human([field('eyes', 'Glowing Eyes', "{{user}}'s eyes glow faintly blue.", {
     enabling: trig('focus'), sources: { user: true, char: false },
-    entryAction: "Describe how {{user}}'s eyes begin to glow.", entryConfirm: trig('glow', 'glowing'),
+    entryAction: "Describe how {{user}}'s eyes begin to glow.", entryConfirm: trig('glow', 'glowing'), withAction: false,
 })]);
 
 test('a persona Trigger asks its Action of the character\'s next reply, and that reply confirms it', async () => {

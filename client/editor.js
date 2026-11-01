@@ -79,6 +79,11 @@ export function mountEditor(pane, owner, ctx, { bigEditor }) {
             <textarea class="cl-input evo-keywords" rows="1" data-path="${path}Confirm" data-kind="keywords" placeholder="Any reply counts">${esc(keywordsText(confirm))}</textarea>
         </div>`;
 
+    // Content With Action (ADR 0007): on unless switched off, so a definition saved before it reads as on
+    const withActionSwitch = (path, value) => `
+        <div class="evo-row">${sw(path, value !== false, 'The change shows in the reply that narrates it')}
+            <span class="evo-hint">Off: the new content waits until a reply confirms the Action, for a slow reveal the model must not know before it commits.</span></div>`;
+
     // A label with the Edit tab's expand button: long text is edited full screen, as the Edit tab does it.
     const labelWithExpand = (label, path) => `
         <div class="evo-label-row"><span class="evo-label">${label}</span>
@@ -109,6 +114,7 @@ export function mountEditor(pane, owner, ctx, { bigEditor }) {
                 ${trigger(`${p}.disabling`, 'Disabling Trigger', 'Switches it off. When both match in one message, this one wins.', f.disabling)}
                 ${action(`${p}.entry`, 'Entry Action', 'Asked of the next reply when the Field switches on; its content follows once a reply confirms it.', f.entryAction, f.entryConfirm)}
                 ${action(`${p}.exit`, 'Exit Action', 'Asked of the next reply when the Field switches off.', f.exitAction, f.exitConfirm)}
+                ${withActionSwitch(`${p}.withAction`, f.withAction)}
                 <div class="evo-buttons">
                     <button type="button" class="cl-btn cl-btn-secondary" data-act="up" ${fi === 0 ? 'disabled' : ''} title="Move up"><i class="fa-solid fa-arrow-up"></i></button>
                     <button type="button" class="cl-btn cl-btn-secondary" data-act="down" ${fi === count - 1 ? 'disabled' : ''} title="Move down"><i class="fa-solid fa-arrow-down"></i></button>
@@ -150,6 +156,7 @@ export function mountEditor(pane, owner, ctx, { bigEditor }) {
                 ${reads(`${p}.entrySources`, ego.entrySources)}
                 ${action(`${p}.entry`, 'Entry Action', 'Asked of the next reply when this Alter Ego takes over.', ego.entryAction, ego.entryConfirm)}
                 ${action(`${p}.exit`, 'Exit Action', 'Asked of the next reply when another Alter Ego takes over from this one.', ego.exitAction, ego.exitConfirm)}
+                ${withActionSwitch(`${p}.withAction`, ego.withAction)}
                 <div class="evo-row"><span class="evo-label">Prompt Name</span><input class="cl-input" data-path="${p}.promptName" data-kind="nullable" value="${esc(ego.promptName)}" placeholder="${esc(owner.name)}">
                     <span class="evo-hint">What the prompt says ${esc(owner.name)} is going by while this Alter Ego is active.</span></div>
                 <div class="evo-row"><span class="evo-label">Name on messages</span><input class="cl-input" data-path="${p}.displayName" data-kind="nullable" value="${esc(ego.displayName)}" placeholder="${esc(owner.name)}"></div>
