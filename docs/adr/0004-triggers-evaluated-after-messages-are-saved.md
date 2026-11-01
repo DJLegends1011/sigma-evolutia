@@ -1,0 +1,3 @@
+# Triggers are evaluated after each message is saved, not while building the prompt
+
+The original evaluated Triggers inside the generation interceptor and changed state there, which broke because a prompt is built several times per reply (swipes, regenerations, the prompt inspector). Here Triggers are evaluated when a message is saved, edited or deleted, and the resulting Field State is recorded against that message's position; building a prompt only reads the state as of the newest message in its history. Swipes and regenerations then read the state from before the replaced reply, and an edit re-evaluates from the edited message onward. This also fits Sigma, whose prompt hooks must answer synchronously.

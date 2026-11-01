@@ -1,0 +1,3 @@
+# Alter Ego Display Identity is drawn by Evolutia itself
+
+Sigma offers no API to change the name or avatar shown on a message, and the `message.render` hook reaches only the message body. Rather than wait for one, Evolutia draws the Display Identity itself in the `message.enhance` hook, which hands it each message element. Each message shows the Alter Ego that was active when it was written (read from Field State at that message's position). This relies on Sigma's undocumented message markup, so the code is kept in one module and fails quietly to the card's own name and avatar if that markup changes.
