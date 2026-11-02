@@ -10,6 +10,8 @@ import {
     applyEvolutiaOps,
     EVOLUTIA_ASSISTANT_PROMPTS,
     EVOLUTIA_CREATOR_PROMPTS,
+    LEGACY_DSHAD_PROMPT_TEXT,
+    PREVIOUS_SEED_TEXTS,
 } from '../client/core/assistant.js';
 
 const CARDS = 'x_evolutia_cards';
@@ -129,9 +131,8 @@ export function register(router, ctx) {
     // Non-destructively seed Evolutia's Saved Prompts into `assistant-prompts` and `creator-studio-prompts` once per user.
     // Keeps the marker in Evolutia's own per-user file folder (`ctx.files.user(req)`) so when Sigma's `ai-panel.js`
     // re-saves `{ version, prompts }`, the marker is never lost and deleted prompts never come back.
-    // Version 2 refreshes the built-in `evo-distill-ego` text and adds `evo-seed-distill-ego-dshad`; a user's own
-    // prompts (and deletions of built-ins) are always kept.
-    const SEED_VERSION = 2;
+    // Version 3 upgrades only stock texts; existing markers preserve the user's deletions.
+    const SEED_VERSION = 3;
     function ensureSavedPrompts(req, { force = false } = {}) {
         try {
             const db = req.db;
@@ -142,25 +143,29 @@ export function register(router, ctx) {
 
             const hasTable = db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'app_store'").get();
             if (!hasTable) return false;
-            // a versioned upgrade (or a forced re-seed) refreshes these built-ins' text where they still sit
-            const refreshing = fromVersion < SEED_VERSION || force;
-            const mergeDoc = (key, builtinStarters, evoPrompts, refreshIds = []) => {
+            // First installs and explicit re-seeds add missing prompts. Upgrades add only new IDs.
+            const mergeDoc = (key, builtinStarters, evoPrompts) => {
                 const row = db.prepare('SELECT value FROM app_store WHERE key = ?').get(key);
                 let parsed = null;
                 if (row?.value) {
                     try { parsed = JSON.parse(row.value); } catch { parsed = null; }
                 }
-                const list = Array.isArray(parsed?.prompts)
+                const list = (Array.isArray(parsed?.prompts)
                     ? [...parsed.prompts]
-                    : [...builtinStarters];
+                    : [...builtinStarters]).filter(p => key !== 'assistant-prompts'
+                        || p.id !== 'evo-seed-distill-ego-dshad'
+                        || p.text !== LEGACY_DSHAD_PROMPT_TEXT);
                 for (const ep of evoPrompts) {
                     const at = list.findIndex(x => x.id === ep.id);
                     if (at !== -1) {
-                        if (refreshing && refreshIds.includes(ep.id)) list[at] = { ...ep };
+                        if (force || (fromVersion > 0 && PREVIOUS_SEED_TEXTS[ep.id]?.includes(list[at].text))) {
+                            list[at] = { ...list[at], text: ep.text };
+                        }
                         continue;
                     }
-                    if (!list.some(x => x.label === ep.label)) {
-                        list.push({ ...ep });
+                    if (force || fromVersion === 0 || (ep.addedIn ?? 1) > fromVersion) {
+                        const { addedIn, ...saved } = ep;
+                        list.push(saved);
                     }
                 }
                 db.prepare(`INSERT INTO app_store (key, value, updated_at) VALUES (?, ?, ?)
@@ -168,8 +173,7 @@ export function register(router, ctx) {
                     .run(key, JSON.stringify({ version: parsed?.version || 1, prompts: list }), Date.now());
                 return true;
             };
-            const assistantRefresh = refreshing ? ['evo-distill-ego'] : [];
-            mergeDoc('assistant-prompts', BUILTIN_ASSISTANT_STARTERS, EVOLUTIA_ASSISTANT_PROMPTS, assistantRefresh);
+            mergeDoc('assistant-prompts', BUILTIN_ASSISTANT_STARTERS, EVOLUTIA_ASSISTANT_PROMPTS);
             mergeDoc('creator-studio-prompts', BUILTIN_CREATOR_STARTERS, EVOLUTIA_CREATOR_PROMPTS);
             userFiles.writeJson('seeded-prompts.json', { seeded: true, version: SEED_VERSION, at: Date.now() });
             return true;
@@ -299,13 +303,13 @@ export function register(router, ctx) {
 
         // Extension calls (Sigma's bundled next-beat, auto-tagger, ...): expand a literal {{evolutia}} /
         // {{evolutia_persona}} the same way the main chat's macros would, strictly read-only. The chat is the
-        // one most recently written to (the call's own spec names no chat the hook ever sees).
+        // chat with the latest message (the call's own spec names no chat the hook ever sees).
         if (purpose === 'extension') {
             const wants = (t) => typeof t === 'string' && (t.includes('{{evolutia}}') || t.includes('{{evolutia_persona}}'));
-            if (!req.messages.some(m => wants(m?.content)) && !wants(req.system)) return req;
+            if (!req.messages.some(m => wants(m?.content))) return req;
             let chatId = info?.chatId || null;
             if (!chatId) {
-                try { chatId = db.prepare('SELECT id FROM chats ORDER BY updated_at DESC LIMIT 1').get()?.id || null; } catch { chatId = null; }
+                try { chatId = db.prepare('SELECT id FROM chats ORDER BY COALESCE(last_mes_at, 0) DESC, updated_at DESC LIMIT 1').get()?.id || null; } catch { chatId = null; }
             }
             if (!chatId) return req;
             const now = promptNow(db, chatId, null, null) || { evolutia: '', persona: '' };
@@ -313,9 +317,7 @@ export function register(router, ctx) {
                 .split('{{evolutia}}').join(now.evolutia)
                 .split('{{evolutia_persona}}').join(now.persona);
             const messages = req.messages.map(m => wants(m?.content) ? { ...m, content: expandText(m.content) } : m);
-            const out = { ...req, messages };
-            if (wants(req.system)) out.system = expandText(req.system);
-            return out;
+            return { ...req, messages };
         }
 
         if (req.messages.length < 2) return req;

@@ -34,8 +34,60 @@ function avatarModeOf(avatar) {
     return 'inherit';
 }
 
+// Copying an Alter Ego to the other owner (a Persona or a card): when the target already has one of
+// that name (case-insensitive, trimmed), the choice decides — 'replace' overwrites it but keeps its
+// id so chats tracking it keep working, 'copy' appends a renamed duplicate ("<Name> (2)", then (3)…),
+// 'cancel' (or anything else) touches nothing. Without a conflict the Alter Ego is simply added.
+// Pure on purpose: the dialog (or onCopyConflict) asks, this applies, the tests check.
+export function resolveCopyAlterEgo(targetDef, ego, { ownerNoun, ownerCharId, targetNoun, choice } = {}) {
+    if (!targetDef) return null;
+    targetDef.alterEgos ||= [];
+    const key = String(ego.name || '').trim().toLowerCase();
+    const existingIdx = targetDef.alterEgos.findIndex(x => String(x.name || '').trim().toLowerCase() === key);
+
+    const prepare = () => {
+        const copy = structuredClone(ego);
+        delete copy._uiAvatarMode;
+        copy.id = idFor(ego.name || 'ego', new Set(targetDef.alterEgos.map(x => x.id)));
+        const takenFields = new Set();
+        for (const f of copy.fields || []) {
+            f.id = idFor(f.name || f.id || 'field', takenFields);
+            takenFields.add(f.id);
+        }
+        if (targetNoun === 'persona' && ownerNoun === 'card') {
+            copy.disguise = true;
+            if (!copy.promptName && ego.name) copy.promptName = ego.name;
+            if (!copy.avatar && ownerCharId) copy.avatar = { character: ownerCharId };
+        }
+        return copy;
+    };
+
+    if (existingIdx < 0 || !choice) {
+        const copy = prepare();
+        targetDef.alterEgos.push(copy);
+        return { ego: copy, index: targetDef.alterEgos.length - 1, mode: 'add' };
+    }
+    if (choice === 'replace') {
+        const copy = prepare();
+        copy.id = targetDef.alterEgos[existingIdx].id; // the id chats track this Alter Ego by
+        targetDef.alterEgos[existingIdx] = copy;
+        return { ego: copy, index: existingIdx, mode: 'replace' };
+    }
+    if (choice === 'copy') {
+        const copy = prepare();
+        const takenNames = new Set(targetDef.alterEgos.map(x => String(x.name || '').trim().toLowerCase()));
+        let n = 2;
+        while (takenNames.has(`${copy.name} (${n})`.trim().toLowerCase())) n++;
+        copy.name = `${copy.name} (${n})`;
+        copy.id = idFor(copy.name, new Set(targetDef.alterEgos.map(x => x.id)));
+        targetDef.alterEgos.push(copy);
+        return { ego: copy, index: targetDef.alterEgos.length - 1, mode: 'copy' };
+    }
+    return null; // cancel: the target keeps what it has
+}
+
 // The editor of one owner's Field Definitions (a card's or a persona's, see owners.js).
-export function mountEditor(hostPane, owner, ctx, { bigEditor, onChanged, liveSide = null, onLiveSwitch = null, otherOwner = null } = {}) {
+export function mountEditor(hostPane, owner, ctx, { bigEditor, onChanged, liveSide = null, onLiveSwitch = null, otherOwner = null, onCopyConflict = null } = {}) {
     const { CoreAPI } = ctx;
     const esc = (s) => CoreAPI.escapeHtml(String(s ?? ''));
     // Isolate listeners on a fresh child node so host-reused panes (like #pane-ext.evolutia.evolutia
@@ -46,6 +98,38 @@ export function mountEditor(hostPane, owner, ctx, { bigEditor, onChanged, liveSi
 
     const dirty = () => JSON.stringify(def) !== saved;
     const sourceDescription = () => got?.source ?? '';
+
+    // The 3-way ask when copying would duplicate a name in the other owner: Replace (keeps the
+    // target's id), Add a copy, or Cancel. Falls back to a plain confirm without ctx.ui.dialog.
+    let copyDialog = null;
+    function askCopyConflict(name, target) {
+        return new Promise((resolve) => {
+            const done = (() => { let settled = false; return (choice) => { if (!settled) { settled = true; resolve(choice); } }; })();
+            if (!ctx.ui?.dialog || typeof document === 'undefined') {
+                done(confirm(`${target.noun === 'persona' ? 'Persona' : 'Character'} "${target.name}" already has an Alter Ego named "${name}". Replace it?`) ? 'replace' : 'cancel');
+                return;
+            }
+            copyDialog ??= ctx.ui.dialog({ id: 'evo-copy-conflict', label: 'Copy Alter Ego', icon: 'fa-clone', onClose: () => done('cancel') });
+            const body = copyDialog.open({ title: 'Copy Alter Ego' });
+            const destLabel = target.noun === 'persona' ? `Persona (${target.name})` : `Character (${target.name})`;
+            body.innerHTML = `
+                <div class="evo-copy-conflict">
+                    <p>${esc(destLabel)} already has an Alter Ego named <strong>${esc(name)}</strong>.</p>
+                    <div class="evo-btn-row">
+                        <button type="button" class="glass-btn glass-btn-sm" data-copy-choice="replace"><i class="fa-solid fa-rotate-right"></i> Replace</button>
+                        <button type="button" class="glass-btn glass-btn-sm" data-copy-choice="copy"><i class="fa-solid fa-clone"></i> Add a copy</button>
+                        <button type="button" class="glass-btn glass-btn-sm" data-copy-choice="cancel"><i class="fa-solid fa-xmark"></i> Cancel</button>
+                    </div>
+                    <span class="evo-muted">Replace keeps this Alter Ego's id, so chats tracking it keep working. Add a copy makes a separate "<strong>${esc(name)}</strong> (2)".</span>
+                </div>`;
+            body.onclick = async (e) => {
+                const b = e.target.closest('[data-copy-choice]');
+                if (!b) return;
+                done(b.dataset.copyChoice);
+                try { await copyDialog.close(); } catch { /* already closed */ }
+            };
+        });
+    }
 
     async function ensureCharList() {
         if (charList) return charList;
@@ -602,23 +686,23 @@ export function mountEditor(hostPane, owner, ctx, { bigEditor, onChanged, liveSi
                     if (!targetDef) {
                         targetDef = definitionFromDescription(otherGot.source || '');
                     }
-                    const copy = structuredClone(ego);
-                    delete copy._uiAvatarMode;
-                    copy.id = idFor(ego.name || 'ego', new Set((targetDef.alterEgos || []).map(x => x.id)));
-                    const takenFields = new Set();
-                    for (const f of copy.fields || []) {
-                        f.id = idFor(f.name || f.id || 'field', takenFields);
-                        takenFields.add(f.id);
+                    targetDef.alterEgos ||= [];
+                    const key = String(ego.name || '').trim().toLowerCase();
+                    const existingIdx = targetDef.alterEgos.findIndex(x => String(x.name || '').trim().toLowerCase() === key);
+                    let choice = null;
+                    if (existingIdx >= 0) {
+                        choice = onCopyConflict
+                            ? await onCopyConflict(ego.name, targetDef.alterEgos[existingIdx])
+                            : await askCopyConflict(ego.name, otherOwner);
+                        if (choice !== 'replace' && choice !== 'copy') return;
                     }
-                    if (otherOwner.noun === 'persona' && owner.noun === 'card') {
-                        copy.disguise = true;
-                        if (!copy.promptName && ego.name) copy.promptName = ego.name;
-                        if (!copy.avatar && owner.charId) copy.avatar = { character: owner.charId };
-                    }
-                    targetDef.alterEgos.push(copy);
+                    const applied = resolveCopyAlterEgo(targetDef, ego, { ownerNoun: owner.noun, ownerCharId: owner.charId, targetNoun: otherOwner.noun, choice });
+                    if (!applied) return;
                     await otherOwner.saveDefinition(targetDef);
                     const destLabel = otherOwner.noun === 'persona' ? `Persona (${otherOwner.name})` : `Character (${otherOwner.name})`;
-                    CoreAPI.showToast(`Copied "${ego.name}" to ${destLabel}`, 'success');
+                    CoreAPI.showToast(applied.mode === 'replace'
+                        ? `Replaced "${ego.name}" in ${destLabel}`
+                        : `Copied "${applied.ego.name}" to ${destLabel}`, 'success');
                     onChanged?.();
                 } catch (err) {
                     CoreAPI.showToast(`Could not copy Alter Ego: ${err.message}`, 'error');

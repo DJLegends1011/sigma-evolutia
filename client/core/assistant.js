@@ -323,30 +323,35 @@ export function applyEvolutiaOps(existingDef, fallbackDescription, ops, targetSi
     };
 }
 
+// Shipped texts of built-in Saved Prompts, newest last-but-current: a seed upgrade refreshes a stored built-in
+// only while its text still equals one of these (so a user's own edits are never overwritten).
+const DISTILL_EGO_V036 = 'Distill a portable Evolutia Alter Ego from this scene or character (with modular Fields like Background, Personality, Appearance, Outfit, and Intimate, using entry triggers on the Alter Ego, activating/enabling triggers on Fields, and disguise setting if appropriate) and propose it as a `cl-evolutia-edits` block.';
+const DISTILL_EGO_V037 = 'Distill a portable Evolutia Alter Ego from this scene or character, with modular Fields like Background, Personality, Appearance, Outfit, and Intimate, and propose it as a `cl-evolutia-edits` block. Use `"entry"` (not `"activating"`) for the Alter Ego\'s Entry Triggers, with `"entrySources": ["user"]` so only the reader\'s words summon it, and `"entryConfirm"` set to the form\'s own name. Give any Intimate Field an `"activating"` trigger (e.g. `["kiss", "undress", "bed"]`) so its tokens are only spent when the scene calls for it. For a morph form, add a True Self Field with the fixed wording `FORM is really <name>, a metamorph disguised as FORM. No one else knows.` — replacing FORM with the form\'s name and <name> with the character\'s (or the persona\'s) real name, never writing the {{user}} macro twice.';
+
+// v0.3.7 shipped this personal-template prompt; v0.3.8 removes it again (only while unedited).
+export const LEGACY_DSHAD_PROMPT_TEXT = 'Distill an Evolutia Alter Ego from this scene or character following the DShad template below exactly — one Field per `##` block, omitting lines that do not apply, keeping the bracketed `Key: [ value; ]` list form — and propose it as a `cl-evolutia-edits` block.\n\n## Identity\nName: [ ; ] · Nicknames: [ ; ] · Titles: [ ; ] · Occupation: [ ; ] · Species: [ ; ] · Type: [ ; ] · Sex: [ ; ] · Gender: [ ; ] · Age: [ ; ] · Height: [ ; ]\n\n## Appearance\nAppearance: [ ; ] · Clothing & Accessories: [ ; ]\n\n## Personality\nTemperament: [ ; ] · Personality: [ ; ] · Quirks: [ ; ] · Speech: [ ; ] · Likes: [ ; ] · Dislikes: [ ; ]\n\n## Life (a morph form can skip this Field so the persona\'s own life carries through)\nRelationships: [ ; ] · Lives: [ ; ] · Daily Life: [ ; ] · Backstory: [ ; ] · Goals: [ ; ]\n\n## Abilities\nSkill 1: [ ; ] · Ability 1: [ ; ] · Vulnerabilities & weaknesses: [ ; ]\n\n## Intimate\nPenis: [ ; ] · Sheath: [ ; ] · Balls: [ ; ] · Vagina: [ ; ] · Anus: [ ; ] · Teats: [ ; ] · Trait or kink: [ ; ]\n\n## True Self (morph forms only)\nFORM is really <name>, a metamorph disguised as FORM. No one else knows.\n\nEvolutia settings for a morph form: Entry Trigger with `"entry"` (reads the user\'s messages: `"entrySources": ["user"]`), Entry Action `Narrate {{user}} morphing into FORM: body, voice and outfit entirely hers.`, `"entryConfirm"` set to FORM\'s name, `"promptName"` set to FORM\'s name, `"disguise": true`, and the change showing in the reply that narrates it. Give the Intimate Field an `"activating"` trigger (e.g. `["kiss", "undress", "bed"]`) so it is only in the prompt when the scene calls for it. In True Self, replace FORM with the form\'s name and <name> with the real name, never writing the {{user}} macro twice.';
+
 export const EVOLUTIA_ASSISTANT_PROMPTS = [
     {
         id: 'evo-distill-ego',
         icon: '🧬',
         label: 'Distill Alter Ego',
-        text: 'Distill a portable Evolutia Alter Ego from this scene or character, with modular Fields like Background, Personality, Appearance, Outfit, and Intimate, and propose it as a `cl-evolutia-edits` block. Use `"entry"` (not `"activating"`) for the Alter Ego\'s Entry Triggers, with `"entrySources": ["user"]` so only the reader\'s words summon it, and `"entryConfirm"` set to the form\'s own name. Give any Intimate Field an `"activating"` trigger (e.g. `["kiss", "undress", "bed"]`) so its tokens are only spent when the scene calls for it. For a morph form, add a True Self Field with the fixed wording `FORM is really <name>, a metamorph disguised as FORM. No one else knows.` — replacing FORM with the form\'s name and <name> with the character\'s (or the persona\'s) real name, never writing the {{user}} macro twice.',
-    },
-    {
-        id: 'evo-seed-distill-ego-dshad',
-        icon: '🧬',
-        label: 'Distill Alter Ego (DShad Template)',
-        text: 'Distill an Evolutia Alter Ego from this scene or character following the DShad template below exactly — one Field per `##` block, omitting lines that do not apply, keeping the bracketed `Key: [ value; ]` list form — and propose it as a `cl-evolutia-edits` block.\n\n## Identity\nName: [ ; ] · Nicknames: [ ; ] · Titles: [ ; ] · Occupation: [ ; ] · Species: [ ; ] · Type: [ ; ] · Sex: [ ; ] · Gender: [ ; ] · Age: [ ; ] · Height: [ ; ]\n\n## Appearance\nAppearance: [ ; ] · Clothing & Accessories: [ ; ]\n\n## Personality\nTemperament: [ ; ] · Personality: [ ; ] · Quirks: [ ; ] · Speech: [ ; ] · Likes: [ ; ] · Dislikes: [ ; ]\n\n## Life (a morph form can skip this Field so the persona\'s own life carries through)\nRelationships: [ ; ] · Lives: [ ; ] · Daily Life: [ ; ] · Backstory: [ ; ] · Goals: [ ; ]\n\n## Abilities\nSkill 1: [ ; ] · Ability 1: [ ; ] · Vulnerabilities & weaknesses: [ ; ]\n\n## Intimate\nPenis: [ ; ] · Sheath: [ ; ] · Balls: [ ; ] · Vagina: [ ; ] · Anus: [ ; ] · Teats: [ ; ] · Trait or kink: [ ; ]\n\n## True Self (morph forms only)\nFORM is really <name>, a metamorph disguised as FORM. No one else knows.\n\nEvolutia settings for a morph form: Entry Trigger with `"entry"` (reads the user\'s messages: `"entrySources": ["user"]`), Entry Action `Narrate {{user}} morphing into FORM: body, voice and outfit entirely hers.`, `"entryConfirm"` set to FORM\'s name, `"promptName"` set to FORM\'s name, `"disguise": true`, and the change showing in the reply that narrates it. Give the Intimate Field an `"activating"` trigger (e.g. `["kiss", "undress", "bed"]`) so it is only in the prompt when the scene calls for it. In True Self, replace FORM with the form\'s name and <name> with the real name, never writing the {{user}} macro twice.',
+        addedIn: 1,
+        text: 'Distill a portable Evolutia Alter Ego from this scene or character, with modular Fields like Background, Personality, Appearance, Outfit, and Intimate, and propose it as a `cl-evolutia-edits` block. Use `\"entry\"` (not `\"activating\"`) for the Alter Ego\'s Entry Triggers, with `\"entrySources\": [\"user\"]` so only the reader\'s words summon it, and `\"entryConfirm\"` set to the form\'s own name. Give any Intimate Field an `\"activating\"` trigger (e.g. `[\"kiss\", \"undress\", \"bed\"]`) so its tokens are only spent when the scene calls for it. For a morph form, add a True Self Field worded `FORM is really <name>, a metamorph disguised as FORM. No one else knows.`, and an Entry Action like `Narrate <name> morphing into FORM.` — replacing FORM with the form\'s name and <name> with the real name of whoever transforms.',
     },
     {
         id: 'evo-distill-lore',
         icon: '📚',
         label: 'Distill to Lorebook',
+        addedIn: 1,
         text: 'Distill the key characters, locations, or ongoing story facts from this conversation into compact, portable Lorebook entries using a `cl-lore-edits` block.',
     },
     {
         id: 'evo-suggest-triggers',
         icon: '⚡',
         label: 'Suggest Triggers & Fields',
-        text: 'Review {{char}}\'s and {{user}}\'s Evolutia definitions and propose a `cl-evolutia-edits` block that splits long fields or adds dynamic Fields, keyword triggers, and Entry/Exit Actions for this story.',
+        addedIn: 1,
+        text: 'Review the Evolutia definitions of this chat\'s character and of my persona, and propose a `cl-evolutia-edits` block that splits long fields or adds dynamic Fields, keyword triggers, and Entry/Exit Actions for this story.',
     },
 ];
 
@@ -355,6 +360,14 @@ export const EVOLUTIA_CREATOR_PROMPTS = [
         id: 'evo-creator-split',
         icon: '🧬',
         label: 'Split into Evolutia Fields',
-        text: 'Organize {{char}}\'s card description into modular Evolutia Fields (such as Background, Personality, Appearance, Relationships, and any gated Secrets with enabling keywords and entry actions) and propose them in a `cl-evolutia-edits` block.',
+        addedIn: 1,
+        text: 'Organize this character\'s card description into modular Evolutia Fields (such as Background, Personality, Appearance, Relationships, and any gated Secrets with enabling keywords and entry actions) and propose them in a `cl-evolutia-edits` block.',
     },
 ];
+
+// Earlier shipped texts per built-in id (Saved Prompts store the text as inserted, so compare raw strings).
+export const PREVIOUS_SEED_TEXTS = {
+    'evo-distill-ego': [DISTILL_EGO_V036, DISTILL_EGO_V037],
+    'evo-suggest-triggers': ['Review {{char}}\'s and {{user}}\'s Evolutia definitions and propose a `cl-evolutia-edits` block that splits long fields or adds dynamic Fields, keyword triggers, and Entry/Exit Actions for this story.'],
+    'evo-creator-split': ['Organize {{char}}\'s card description into modular Evolutia Fields (such as Background, Personality, Appearance, Relationships, and any gated Secrets with enabling keywords and entry actions) and propose them in a `cl-evolutia-edits` block.'],
+};

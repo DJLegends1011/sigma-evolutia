@@ -328,7 +328,12 @@ test('assistant-apply creates/updates Alter Egos and Fields on Character and Per
     // and calling /seed-prompts again must NOT resurrect the deleted prompt.
     const doc1 = (await me.api('/store/assistant-prompts')).body;
     assert.ok(doc1.prompts.some(p => p.id === 'evo-distill-ego'));
-    assert.ok(doc1.prompts.some(p => p.id === 'evo-seed-distill-ego-dshad'), 'DShad template starter prompt is seeded');
+    assert.ok(!doc1.prompts.some(p => p.id === 'evo-seed-distill-ego-dshad'), 'DShad template is not seeded');
+    const { EVOLUTIA_ASSISTANT_PROMPTS, EVOLUTIA_CREATOR_PROMPTS } = await import('../client/core/assistant.js');
+    assert.ok(!EVOLUTIA_ASSISTANT_PROMPTS.some(p => p.id === 'evo-seed-distill-ego-dshad'));
+    for (const p of [...EVOLUTIA_ASSISTANT_PROMPTS, ...EVOLUTIA_CREATOR_PROMPTS]) {
+        assert.doesNotMatch(p.text, /\{\{(?:user|char)\}\}/, p.id);
+    }
     const distillPrompt = doc1.prompts.find(p => p.id === 'evo-distill-ego');
     assert.match(distillPrompt.text, /entryConfirm/, 'updated Distill Alter Ego prompt mentions entryConfirm');
     const filtered = doc1.prompts.filter(p => p.id !== 'evo-distill-ego');
@@ -341,6 +346,70 @@ test('assistant-apply creates/updates Alter Egos and Fields on Character and Per
     assert.ok(!doc2.prompts.some(p => p.id === 'evo-distill-ego'), 'deleted prompt stays deleted');
 });
 
+test('seed upgrades preserve deletions and custom texts, migrate stock texts, and allow forced restoration', async () => {
+    const prompts = await import('../client/core/assistant.js');
+    const hostRoot = path.resolve(path.dirname(kitPath), '../..');
+    const { extensionUserDir } = await import(pathToFileURL(path.join(hostRoot, 'server/lib/extensions.js')).href);
+    const marker = path.join(extensionUserDir('default', 'evolutia'), 'seeded-prompts.json');
+    const stock36 = 'Distill a portable Evolutia Alter Ego from this scene or character (with modular Fields like Background, Personality, Appearance, Outfit, and Intimate, using entry triggers on the Alter Ego, activating/enabling triggers on Fields, and disguise setting if appropriate) and propose it as a `cl-evolutia-edits` block.';
+    const current = prompts.EVOLUTIA_ASSISTANT_PROMPTS.find(p => p.id === 'evo-distill-ego');
+    const legacyDshad = prompts.LEGACY_DSHAD_PROMPT_TEXT ?? prompts.EVOLUTIA_ASSISTANT_PROMPTS.find(p => p.id === 'evo-seed-distill-ego-dshad').text;
+    const previous = prompts.PREVIOUS_SEED_TEXTS?.['evo-distill-ego'] ?? [stock36, current.text];
+    const seedFrom = async (version, assistant, creator = []) => {
+        fs.writeFileSync(marker, JSON.stringify({ seeded: true, version }));
+        assert.equal((await me.api('/store/assistant-prompts', 'PUT', { version: 1, prompts: assistant })).status, 200);
+        assert.equal((await me.api('/store/creator-studio-prompts', 'PUT', { version: 1, prompts: creator })).status, 200);
+        const seeded = await evolutia('/seed-prompts', 'POST', {});
+        assert.equal(seeded.body.seeded, true);
+        assert.equal(JSON.parse(fs.readFileSync(marker, 'utf8')).version, 3);
+        return (await me.api('/store/assistant-prompts')).body.prompts;
+    };
+    for (const version of [1, 2]) {
+        let list = await seedFrom(version, [{ ...current, text: 'My custom distillation', label: 'My label', icon: 'X' }]);
+        assert.ok(!list.some(p => p.id === 'evo-distill-lore'));
+        assert.equal(list.find(p => p.id === current.id).text, 'My custom distillation');
+        assert.deepEqual((await me.api('/store/creator-studio-prompts')).body.prompts, []);
+        for (const text of new Set([stock36, ...previous])) {
+            list = await seedFrom(version, [{ ...current, text, label: 'Keep my label', icon: 'X' }]);
+            assert.equal(list.find(p => p.id === current.id).text, current.text);
+            assert.equal(list.find(p => p.id === current.id).label, 'Keep my label');
+            assert.equal(list.find(p => p.id === current.id).icon, 'X');
+        }
+        list = await seedFrom(version, [{ id: 'evo-seed-distill-ego-dshad', text: legacyDshad }]);
+        assert.ok(!list.some(p => p.id === 'evo-seed-distill-ego-dshad'));
+        assert.ok(!list.some(p => p.id === current.id));
+        list = await seedFrom(version, [{ id: 'evo-seed-distill-ego-dshad', text: legacyDshad + ' My edits.' }]);
+        assert.equal(list.find(p => p.id === 'evo-seed-distill-ego-dshad').text, legacyDshad + ' My edits.');
+        const creator = prompts.EVOLUTIA_CREATOR_PROMPTS[0];
+        await seedFrom(version, [], [{ ...creator, text: 'My creator instructions' }]);
+        assert.equal((await me.api('/store/creator-studio-prompts')).body.prompts[0].text, 'My creator instructions');
+        for (const text of prompts.PREVIOUS_SEED_TEXTS?.[creator.id] ?? []) {
+            await seedFrom(version, [], [{ ...creator, text }]);
+            assert.equal((await me.api('/store/creator-studio-prompts')).body.prompts[0].text, creator.text);
+        }
+        const forced = await evolutia('/seed-prompts', 'POST', { force: true });
+        assert.equal(forced.body.seeded, true);
+        list = (await me.api('/store/assistant-prompts')).body.prompts;
+        for (const p of prompts.EVOLUTIA_ASSISTANT_PROMPTS) assert.equal(list.find(x => x.id === p.id).text, p.text);
+        assert.equal((await me.api('/store/creator-studio-prompts')).body.prompts.find(p => p.id === creator.id).text, creator.text);
+    }
+});
+
+test('extension requests use latest message time rather than latest chat edit', async () => {
+    const older = await kael(human([field('look', 'Appearance', 'WRONG CHAT FIELD', { startsOn: true })]));
+    const latest = await kael(human([field('look', 'Appearance', 'LATEST MESSAGE FIELD', { startsOn: true })]));
+    for (const chat of [older, latest]) await evolutia(`/characters/${chat.id}/on`, 'PUT', { on: true });
+    const db = sigma.db();
+    db.prepare('UPDATE chats SET last_mes_at = 10, updated_at = 9999999999999').run();
+    db.prepare('UPDATE chats SET last_mes_at = 20, updated_at = 1 WHERE id = ?').run(latest.chatId);
+    const { runHook } = await import(pathToFileURL(path.resolve(path.dirname(kitPath), '../../server/db/hook-seat.js')).href);
+    const request = { messages: [{ role: 'system', content: '{{evolutia}}' }], params: {} };
+    const result = runHook('llm.request', request, { db, purpose: 'extension', profileKind: 'openai', profileId: null });
+    assert.match(result.messages[0].content, /LATEST MESSAGE FIELD/);
+    assert.doesNotMatch(result.messages[0].content, /WRONG CHAT FIELD|\{\{evolutia\}\}/);
+    assert.equal(request.messages[0].content, '{{evolutia}}', 'request stays immutable');
+});
+
 test('uploading a custom avatar returns an upload avatar descriptor and client page boots cleanly with __SIGMA_EVOLUTIA__', async () => {
     const tinyPng = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=';
     const up = await evolutia('/avatars', 'POST', { filename: 'bambi.png', dataUrl: tinyPng });
@@ -351,7 +420,7 @@ test('uploading a custom avatar returns an upload avatar descriptor and client p
     try {
         await page.boot();
         assert.ok(globalThis.window?.__SIGMA_EVOLUTIA__, 'window.__SIGMA_EVOLUTIA__ is exposed');
-        assert.equal(globalThis.window.__SIGMA_EVOLUTIA__.version, '0.3.7');
+        assert.equal(globalThis.window.__SIGMA_EVOLUTIA__.version, '0.3.8');
     } finally {
         await page.close();
     }

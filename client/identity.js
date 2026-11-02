@@ -4,8 +4,45 @@
 import { resolveAvatarThumb } from './owners.js';
 
 const NAME = '.chat-conv-msg-name';
-const AVATAR = 'img.chat-conv-msg-avatar';
+const FRAME = '.chat-conv-msg-avatar-frame';
+const NATIVE_AVATAR = 'img.chat-conv-msg-avatar:not([data-evo-synth-avatar])';
+const SYNTH_AVATAR = 'img.chat-conv-msg-avatar[data-evo-synth-avatar]';
 const TEXT = '.chat-conv-msg-text';
+
+// The avatar half of draw: paints the Alter Ego's portrait over the message's own, and puts the
+// original back when there is no identity to show. Sigma renders the portrait as an <img>, or as a
+// plain glyph (<i> in .chat-conv-msg-avatar-frame) when a persona has no picture — so a synthesized
+// <img> is put into the frame (its markup remembered in dataset.evoAvatarHtml) and swapped back out
+// later. Pure DOM against el, which lets tests drive it with a lightweight mock element.
+export function drawAvatar(el, src, doc = (typeof document !== 'undefined' ? document : el?.ownerDocument)) {
+    const img = el?.querySelector(NATIVE_AVATAR);
+    if (img) {
+        el.dataset.evoSrc ??= img.getAttribute('src') || '';
+        const target = src || el.dataset.evoSrc;
+        if (img.getAttribute('src') !== target) img.setAttribute('src', target);
+        return;
+    }
+    const frame = el?.querySelector(FRAME);
+    if (!frame) return;
+    if (src) {
+        el.dataset.evoAvatarHtml ??= frame.innerHTML;
+        let synth = frame.querySelector(SYNTH_AVATAR);
+        if (!synth) {
+            synth = doc.createElement('img');
+            synth.className = 'chat-conv-msg-avatar';
+            synth.setAttribute('data-evo-synth-avatar', '1');
+            synth.setAttribute('src', src);
+            synth.setAttribute('alt', '');
+            synth.setAttribute('loading', 'lazy');
+            frame.replaceChildren(synth);
+        } else if (synth.getAttribute('src') !== src) {
+            synth.setAttribute('src', src);
+        }
+    } else if (el.dataset.evoAvatarHtml !== undefined) {
+        frame.innerHTML = el.dataset.evoAvatarHtml;
+        delete el.dataset.evoAvatarHtml;
+    }
+}
 
 export function createIdentity(ctx) {
     const { CoreAPI } = ctx;
@@ -16,7 +53,6 @@ export function createIdentity(ctx) {
         const badge = badges[seq];
         const strippedText = stripped[seq];
         const name = el.querySelector(NAME);
-        const img = el.querySelector(AVATAR);
         const textEl = el.querySelector(TEXT);
         if (name) {
             el.dataset.evoName ??= name.textContent;
@@ -34,11 +70,7 @@ export function createIdentity(ctx) {
                 badgeEl.remove();
             }
         }
-        if (img) {
-            el.dataset.evoSrc ??= img.getAttribute('src') || '';
-            const src = resolveAvatarThumb(who?.avatar, CoreAPI, 192) || el.dataset.evoSrc;
-            if (img.getAttribute('src') !== src) img.setAttribute('src', src);
-        }
+        drawAvatar(el, resolveAvatarThumb(who?.avatar, CoreAPI, 192) || '');
         if (textEl && typeof CoreAPI?.formatChatText === 'function') {
             if (strippedText != null) {
                 el.dataset.evoOrigHtml ??= textEl.innerHTML;
