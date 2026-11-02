@@ -77,6 +77,9 @@ export function register(router, ctx) {
                     if (pr.original == null && p.description) {
                         db.prepare(`UPDATE ${PERSONAS} SET original = ? WHERE persona_id = ?`).run(p.description, pr.persona_id);
                     }
+                    // Write personas.description via raw SQL rather than ctx.stores.personas.updatePersona
+                    // so restoring the {{evolutia_persona}} placeholder after a sync does not bump
+                    // personas.updated_at to Date.now() on the receiver and skew Prefer-newer comparisons.
                     db.prepare('UPDATE personas SET description = ? WHERE id = ?').run(PERSONA_MACRO, pr.persona_id);
                     changedPersonas.push(pr.persona_id);
                 }
