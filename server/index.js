@@ -49,7 +49,8 @@ export function register(router, ctx) {
     const evolutiaOf = (db, charId) => chars.getCharacter(db, charId)?.card.data.extensions?.evolutia || null;
     const initializedDbs = new WeakSet();
 
-    // Rebuild x_evolutia_cards from the characters table (at server start and after LAN Sync).
+    // Rebuild x_evolutia_cards from characters and ensure enabled x_evolutia_personas rows have {{evolutia_persona}}
+    // in place of the persona's description (at server start and after LAN Sync).
     function rebuildCardsTable(db) {
         if (!db) return;
         try {
@@ -67,6 +68,16 @@ export function register(router, ctx) {
                     changed.push(r.id);
                 }
                 if (changed.length) ctx.report(db, { entity: 'character', op: 'updated', ids: changed, fields: ['evolutia.on'] });
+
+                const pRows = db.prepare(`SELECT persona_id, enabled, original FROM ${PERSONAS} WHERE enabled = 1`).all();
+                for (const pr of pRows) {
+                    const p = ctx.stores.personas.getPersona(db, pr.persona_id);
+                    if (!p || p.description === PERSONA_MACRO) continue;
+                    if (pr.original == null && p.description) {
+                        db.prepare(`UPDATE ${PERSONAS} SET original = ? WHERE persona_id = ?`).run(p.description, pr.persona_id);
+                    }
+                    ctx.stores.personas.updatePersona(db, pr.persona_id, { description: PERSONA_MACRO });
+                }
             })();
         } catch { /* ignore if table not ready yet */ }
     }
@@ -98,7 +109,7 @@ export function register(router, ctx) {
     };
     // a report belongs inside its write's transaction (a nested one joins the caller's)
     const writePersonaRow = (db, personaId, row) => db.transaction(() => {
-        const updatedAt = row.updatedAt ?? Date.now();
+        const updatedAt = Date.now();
         db.prepare(`INSERT INTO ${PERSONAS} (persona_id, enabled, original, definition, updated_at) VALUES (?, ?, ?, ?, ?)
             ON CONFLICT(persona_id) DO UPDATE SET enabled = excluded.enabled, original = excluded.original, definition = excluded.definition, updated_at = excluded.updated_at`)
             .run(personaId, row.on ? 1 : 0, row.original ?? null, row.definition ? JSON.stringify(row.definition) : null, updatedAt);
