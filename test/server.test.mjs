@@ -262,9 +262,26 @@ test('assistant-apply creates/updates Alter Egos and Fields on Character and Per
                 name: 'Bambi',
                 promptName: 'Bambi',
                 disguise: true,
+                // Old block using "activating" on the ego still sets its Entry Triggers
                 activating: ['bambi disguise'],
                 fields: [
                     { name: 'Appearance', startsOn: true, content: 'Platinum waves and pink crop top.' },
+                ],
+            },
+            {
+                op: 'upsert-ego',
+                side: 'persona',
+                name: 'Ollie',
+                promptName: 'Ollie',
+                disguise: true,
+                entry: ['become ollie'],
+                fields: [
+                    {
+                        name: 'Intimate',
+                        startsOn: true,
+                        activating: ['kiss', 'undress'],
+                        content: 'Energetic and vocal.',
+                    },
                 ],
             },
             {
@@ -275,7 +292,17 @@ test('assistant-apply creates/updates Alter Egos and Fields on Character and Per
         ],
     });
     assert.equal(applyRes.status, 200, JSON.stringify(applyRes.body));
-    assert.equal(applyRes.body.summary.length, 3);
+    assert.equal(applyRes.body.summary.length, 4);
+
+    // Check that Bambi's legacy "activating" set Entry Triggers, and Ollie's "entry" + Intimate "activating" mapped to Activating Triggers (with no Enabling ones)
+    const personaEvo = (await evolutia(`/personas/${applyRes.body.personaId}`)).body.definition;
+    const bambiEgo = personaEvo.alterEgos.find(e => e.name === 'Bambi');
+    assert.deepEqual(bambiEgo.entry.keywords, ['bambi disguise'], 'old "activating" on ego sets Entry Triggers');
+    const ollieEgo = personaEvo.alterEgos.find(e => e.name === 'Ollie');
+    assert.deepEqual(ollieEgo.entry.keywords, ['become ollie'], '"entry" on ego sets Entry Triggers');
+    const intimateField = ollieEgo.fields.find(f => f.name === 'Intimate');
+    assert.deepEqual(intimateField.activating.keywords, ['kiss', 'undress'], 'nested Field "activating" sets Activating Triggers');
+    assert.deepEqual(intimateField.enabling.keywords, [], 'nested Field has no Enabling Triggers');
 
     const state = (await evolutia(`/chats/${chatId}/state?charId=${charId}`)).body;
     assert.equal(state.on, true);
@@ -311,7 +338,7 @@ test('uploading a custom avatar returns an upload avatar descriptor and client p
     try {
         await page.boot();
         assert.ok(globalThis.window?.__SIGMA_EVOLUTIA__, 'window.__SIGMA_EVOLUTIA__ is exposed');
-        assert.equal(globalThis.window.__SIGMA_EVOLUTIA__.version, '0.3.5');
+        assert.equal(globalThis.window.__SIGMA_EVOLUTIA__.version, '0.3.6');
     } finally {
         await page.close();
     }

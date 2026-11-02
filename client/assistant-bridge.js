@@ -11,6 +11,29 @@ export function mountAssistantBridge(ctx, { getChatId, getCharId, onApplied } = 
     // Ensure Evolutia's Saved Prompt chips are seeded into assistant-prompts & creator-studio-prompts
     ctx.server.call('/seed-prompts', 'POST', {}).catch(() => {});
 
+    function triggerKeywords(raw, modeProp) {
+        const isObj = raw && typeof raw === 'object' && !Array.isArray(raw);
+        const rawList = Array.isArray(raw) ? raw : (isObj && Array.isArray(raw.keywords) ? raw.keywords : []);
+        const list = rawList.map(x => String(x ?? '').trim()).filter(Boolean);
+        const mode = String((isObj ? raw.mode : modeProp) || 'ANY').toUpperCase() === 'ALL' ? 'ALL' : 'ANY';
+        return { list, mode };
+    }
+
+    function triggerPillsHtml(label, raw, modeProp) {
+        const { list, mode } = triggerKeywords(raw, modeProp);
+        if (!list.length) return '';
+        const modeTag = mode === 'ALL' ? ' (ALL)' : '';
+        return `<div class="evo-prop-meta">${esc(label)}${esc(modeTag)}: ${list.map(k => `<code class="evo-kw-pill">${esc(k)}</code>`).join(' ')}</div>`;
+    }
+
+    function fieldTriggersHtml(f) {
+        return [
+            triggerPillsHtml('Activating', f.activating, f.activatingMode),
+            triggerPillsHtml('Enabling', f.enabling, f.enablingMode),
+            triggerPillsHtml('Disabling', f.disabling, f.disablingMode),
+        ].filter(Boolean).join('');
+    }
+
     function summarizeOpHtml(op) {
         const sideLabel = op.side === 'persona' ? 'Persona' : 'Character';
         const sideTone = op.side === 'persona' ? 'is-persona' : 'is-char';
@@ -18,7 +41,8 @@ export function mountAssistantBridge(ctx, { getChatId, getCharId, onApplied } = 
 
         if (kind === 'upsert-ego') {
             const fields = Array.isArray(op.fields) ? op.fields : [];
-            const kws = Array.isArray(op.activating) ? op.activating : [];
+            const entryRaw = op.entry !== undefined ? op.entry : op.activating;
+            const entryMode = op.entryMode ?? op.activatingMode;
             return `
                 <div class="evo-prop-item">
                     <div class="evo-prop-item-head">
@@ -28,22 +52,26 @@ export function mountAssistantBridge(ctx, { getChatId, getCharId, onApplied } = 
                         ${op.disguise ? '<span class="evo-badge is-disguise">Disguise</span>' : ''}
                         <span class="evo-token-pill">${fields.length} field${fields.length === 1 ? '' : 's'}</span>
                     </div>
-                    ${kws.length ? `<div class="evo-prop-meta">Activating: ${kws.map(k => `<code class="evo-kw-pill">${esc(k)}</code>`).join(' ')}</div>` : ''}
+                    ${triggerPillsHtml('Entry', entryRaw, entryMode)}
                     ${op.entryAction ? `<div class="evo-prop-meta">Entry Action: <em>${esc(op.entryAction)}</em></div>` : ''}
-                    ${fields.length ? `<div class="evo-prop-fields">${fields.map(f => `
+                    ${fields.length ? `<div class="evo-prop-fields">${fields.map((f) => {
+                        const trigHtml = fieldTriggersHtml(f);
+                        return `
                         <details class="evo-prop-field">
                             <summary>
                                 <span>## ${esc(f.name || 'Field')}</span>
                                 <span class="evo-muted">${f.startsOn === false ? 'starts OFF' : 'starts ON'} · ~${approxTokens(f.content)} tok</span>
+                                ${trigHtml}
                             </summary>
+                            ${f.entryAction ? `<div class="evo-prop-meta">Entry Action: <em>${esc(f.entryAction)}</em></div>` : ''}
+                            ${f.exitAction ? `<div class="evo-prop-meta">Exit Action: <em>${esc(f.exitAction)}</em></div>` : ''}
                             <div class="evo-prop-field-body">${esc(f.content || '')}</div>
-                        </details>`).join('')}</div>` : ''}
+                        </details>`;
+                    }).join('')}</div>` : ''}
                 </div>`;
         }
 
         if (kind === 'upsert-field') {
-            const en = Array.isArray(op.enabling) ? op.enabling : [];
-            const dis = Array.isArray(op.disabling) ? op.disabling : [];
             return `
                 <div class="evo-prop-item">
                     <div class="evo-prop-item-head">
@@ -52,9 +80,9 @@ export function mountAssistantBridge(ctx, { getChatId, getCharId, onApplied } = 
                         <strong class="evo-prop-title">## ${esc(op.name || 'Field')}</strong>
                         <span class="evo-token-pill">${op.startsOn === false ? 'starts OFF' : 'starts ON'} · ~${approxTokens(op.content)} tok</span>
                     </div>
-                    ${en.length ? `<div class="evo-prop-meta">Enabling: ${en.map(k => `<code class="evo-kw-pill">${esc(k)}</code>`).join(' ')}</div>` : ''}
-                    ${dis.length ? `<div class="evo-prop-meta">Disabling: ${dis.map(k => `<code class="evo-kw-pill">${esc(k)}</code>`).join(' ')}</div>` : ''}
+                    ${fieldTriggersHtml(op)}
                     ${op.entryAction ? `<div class="evo-prop-meta">Entry Action: <em>${esc(op.entryAction)}</em></div>` : ''}
+                    ${op.exitAction ? `<div class="evo-prop-meta">Exit Action: <em>${esc(op.exitAction)}</em></div>` : ''}
                     <div class="evo-prop-field-body">${esc(op.content || '')}</div>
                 </div>`;
         }

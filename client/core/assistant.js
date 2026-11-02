@@ -27,16 +27,16 @@ export function formatEvolutiaBlueprint(def, timeline, side = 'char', ownerName 
         const ego = def.alterEgos[idx];
         const isCurrent = ego.id === activeEgo.id;
         const egoTag = idx === 0 ? 'Base / Default' : (ego.disguise ? 'Disguise Alter Ego' : 'Alter Ego');
-        const actKw = ego.entry?.keywords?.length ? ` | Activating Keywords: [${ego.entry.keywords.join(', ')}]` : '';
+        const entryKw = ego.entry?.keywords?.length ? ` | Entry Triggers: [${ego.entry.keywords.join(', ')}]` : '';
         const entryAct = ego.entryAction ? ` | Entry Action: "${ego.entryAction}"` : '';
-        lines.push(`\n### Alter Ego: ${ego.name} (${egoTag}${isCurrent ? ', ACTIVE IN SCENE' : ''})${actKw}${entryAct}`);
+        lines.push(`\n### Alter Ego: ${ego.name} (${egoTag}${isCurrent ? ', ACTIVE IN SCENE' : ''})${entryKw}${entryAct}`);
 
         for (const f of ego.fields || []) {
             const phase = now?.fields?.[ego.id]?.[f.id]?.phase ?? (f.startsOn ? 'on' : 'off');
             const meta = [`state=${phase.toUpperCase()}`, `startsOn=${!!f.startsOn}`];
+            if (f.activating?.keywords?.length) meta.push(`activating=[${f.activating.keywords.join(', ')}]`);
             if (f.enabling?.keywords?.length) meta.push(`enabling=[${f.enabling.keywords.join(', ')}]`);
             if (f.disabling?.keywords?.length) meta.push(`disabling=[${f.disabling.keywords.join(', ')}]`);
-            if (f.activating?.keywords?.length) meta.push(`gated=[${f.activating.keywords.join(', ')}]`);
             if (f.entryAction) meta.push(`entryAction="${f.entryAction}"`);
             if (f.exitAction) meta.push(`exitAction="${f.exitAction}"`);
             lines.push(`## ${f.name} (${meta.join(', ')})\n${f.content || '(empty)'}`);
@@ -59,13 +59,24 @@ When the reader asks you to create, update, split, or distill Evolutia Alter Ego
     "name": "Alter Ego Name",
     "promptName": "Optional in-scene name",
     "disguise": false,
-    "activating": ["keyword 1", "keyword 2"],
+    "entry": ["keyword 1", "keyword 2"],
     "entryAction": "Optional narrator instruction when switching into this Alter Ego",
     "fields": [
       {
         "name": "Background",
         "startsOn": true,
         "content": "Field prose...",
+        "activating": [],
+        "enabling": [],
+        "disabling": [],
+        "entryAction": "",
+        "exitAction": ""
+      },
+      {
+        "name": "Intimate",
+        "startsOn": true,
+        "content": "Only in the prompt while an activating keyword matches the Window...",
+        "activating": ["kiss", "undress", "bed"],
         "enabling": [],
         "disabling": [],
         "entryAction": "",
@@ -79,6 +90,7 @@ When the reader asks you to create, update, split, or distill Evolutia Alter Ego
     "ego": "main",
     "name": "Secrets",
     "startsOn": false,
+    "activating": [],
     "enabling": ["what's wrong", "are you okay"],
     "disabling": [],
     "entryAction": "{{char}} hesitates before revealing the truth.",
@@ -90,7 +102,21 @@ When the reader asks you to create, update, split, or distill Evolutia Alter Ego
 
 - \`side\` is \`"char"\` (the character card) or \`"persona"\` (the reader's persona).
 - \`op\` may be \`"upsert-ego"\` (creates or updates an Alter Ego and its fields), \`"upsert-field"\` (creates or updates one Field on \`"main"\` or a named Alter Ego), \`"delete-field"\` (removes a Field by \`name\` on \`ego\`), or \`"switch"\` (\`{"op":"switch","side":"char","ego":"Alter Ego Name"}\` or \`{"op":"switch","side":"char","ego":"main","field":"Secrets","on":true}\`).
+- Trigger types (each accepts an array of keywords/regexes, or \`{"mode": "ANY" | "ALL", "keywords": [...]}\`):
+  - \`activating\` (Field): in the prompt only while it matches the Window (use with \`startsOn: true\` for context-sensitive fields like Intimate or combat stats).
+  - \`enabling\` (Field): switches on and stays on.
+  - \`disabling\` (Field): switches off and stays off.
+  - \`entry\` (Alter Ego): makes an Alter Ego active.
 - Nothing is written until the reader clicks **Apply to Evolutia** on the review card.`;
+
+function toTrigger(raw, modeProp) {
+    if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+        const m = String(raw.mode ?? modeProp ?? 'ANY').toUpperCase() === 'ALL' ? 'ALL' : 'ANY';
+        return { mode: m, keywords: toList(raw.keywords ?? raw.list ?? []) };
+    }
+    const m = String(modeProp ?? 'ANY').toUpperCase() === 'ALL' ? 'ALL' : 'ANY';
+    return { mode: m, keywords: toList(raw) };
+}
 
 function patchFieldFromOp(target, spec) {
     if (typeof spec.name === 'string' && spec.name.trim()) target.name = spec.name.trim();
@@ -98,9 +124,9 @@ function patchFieldFromOp(target, spec) {
     if (typeof spec.startsOn === 'boolean') target.startsOn = spec.startsOn;
     if (typeof spec.withAction === 'boolean') target.withAction = spec.withAction;
     if (typeof spec.stripTriggers === 'boolean') target.stripTriggers = spec.stripTriggers;
-    if (spec.enabling !== undefined) target.enabling = { mode: spec.enablingMode === 'ALL' ? 'ALL' : 'ANY', keywords: toList(spec.enabling) };
-    if (spec.disabling !== undefined) target.disabling = { mode: spec.disablingMode === 'ALL' ? 'ALL' : 'ANY', keywords: toList(spec.disabling) };
-    if (spec.activating !== undefined) target.activating = { mode: spec.activatingMode === 'ALL' ? 'ALL' : 'ANY', keywords: toList(spec.activating) };
+    if (spec.activating !== undefined) target.activating = toTrigger(spec.activating, spec.activatingMode);
+    if (spec.enabling !== undefined) target.enabling = toTrigger(spec.enabling, spec.enablingMode);
+    if (spec.disabling !== undefined) target.disabling = toTrigger(spec.disabling, spec.disablingMode);
     if (typeof spec.entryAction === 'string') target.entryAction = spec.entryAction;
     if (typeof spec.exitAction === 'string') target.exitAction = spec.exitAction;
     return target;
@@ -143,9 +169,9 @@ export function applyEvolutiaOps(existingDef, fallbackDescription, ops, targetSi
             if (typeof op.disguise === 'boolean') ego.disguise = op.disguise;
             if (typeof op.withAction === 'boolean') ego.withAction = op.withAction;
             if (typeof op.stripTriggers === 'boolean') ego.stripTriggers = op.stripTriggers;
-            if (op.activating !== undefined || op.entry !== undefined) {
-                const kws = toList(op.activating ?? op.entry?.keywords ?? op.entry);
-                ego.entry = { mode: 'ANY', keywords: kws };
+            if (op.entry !== undefined || op.activating !== undefined) {
+                const rawEntry = op.entry !== undefined ? op.entry : op.activating;
+                ego.entry = toTrigger(rawEntry, op.entryMode ?? op.activatingMode);
             }
             if (typeof op.entryAction === 'string') ego.entryAction = op.entryAction;
             if (typeof op.exitAction === 'string') ego.exitAction = op.exitAction;
@@ -236,7 +262,7 @@ export const EVOLUTIA_ASSISTANT_PROMPTS = [
         id: 'evo-distill-ego',
         icon: '🧬',
         label: 'Distill Alter Ego',
-        text: 'Distill a portable Evolutia Alter Ego from this scene or character (with modular Fields like Background, Personality, Appearance, and Outfit, plus activating keywords and disguise setting if appropriate) and propose it as a `cl-evolutia-edits` block.',
+        text: 'Distill a portable Evolutia Alter Ego from this scene or character (with modular Fields like Background, Personality, Appearance, Outfit, and Intimate, using entry triggers on the Alter Ego, activating/enabling triggers on Fields, and disguise setting if appropriate) and propose it as a `cl-evolutia-edits` block.',
     },
     {
         id: 'evo-distill-lore',

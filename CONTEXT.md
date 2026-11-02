@@ -95,4 +95,4 @@ An Alter Ego flag (`disguise: true`) indicating an in-scene disguise or separate
 An optional flag on a Field or Alter Ego that removes matched trigger keywords from the outgoing LLM prompt (`prompt.final`) and rendered chat bubble (`message.render` / `message.enhance`) without mutating the stored message row in SQLite, preserving pure timeline derivation (ADR 0004).
 
 **Assistant Proposals (`cl-evolutia-edits`)**:
-Fenced JSON blocks emitted by Project Σ's Chat Assistant or Creator Studio when asked to create, split, or distill Evolutia Alter Egos, Fields, and Triggers, rendered in the Assistant panel as interactive review cards with 1-click Apply.
+Fenced JSON blocks emitted by Project Σ's Chat Assistant or Creator Studio when asked to create, split, or distill Evolutia Alter Egos, Fields, and Triggers, rendered in the Assistant panel as interactive review cards with 1-click Apply. On `upsert-ego`, `"entry"` sets the Alter Ego's Entry Triggers (legacy `"activating"` is also accepted); on Fields (`upsert-field` and nested `fields` in `upsert-ego`), `"activating"`, `"enabling"`, and `"disabling"` set the Field's Activating, Enabling, and Disabling Triggers.
