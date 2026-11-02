@@ -207,7 +207,7 @@ test('a persona Manual Switch changes only the persona, and the chat state repor
     assert.deepEqual(state.persona.identities[seqs[1]], { name: 'Demetri (glowing)', avatar: null });
 });
 
-test('stripTriggers removes the trigger phrase from a newly created message and still triggers the Alter Ego swap', async () => {
+test('stripTriggers is non-destructive: stored message stays untouched while prompt.final and state.stripped strip the keyword', async () => {
     const personaId = await demetri('A laid-back student.');
     const def = human([field('id', 'Identity', 'Demetri base.')]);
     def.alterEgos.push({
@@ -224,10 +224,67 @@ test('stripTriggers removes the trigger phrase from a newly created message and 
     const { chatId } = await kael(null);
     await me.api(`/chats/${chatId}/messages`, 'POST', { mes: '!morphbambi Hey there!' });
     const msgs = (await me.api(`/chats/${chatId}`)).body.messages;
-    assert.equal(msgs.at(-1).content, 'Hey there!');
-    const text = await prompt(chatId);
+    // Stored SQLite row remains untouched as written (ADR 0004 & ADR 0008)
+    assert.equal(msgs.at(-1).content, '!morphbambi Hey there!');
+    // Built prompt has the trigger stripped via prompt.final
+    const built = (await me.api(`/chats/${chatId}/prompt`)).body.messages;
+    assert.ok(built.some(m => m.content === 'Hey there!'));
+    assert.ok(!built.some(m => m.content.includes('!morphbambi')));
+    const text = built.map(m => m.content).join('\n');
     assert.match(text, /disguised \/ presenting in-scene as: Bambi/);
     assert.match(text, /## Appearance\nPlatinum blonde\./);
+    // And /state exposes stripped map for message.render / message.enhance
+    const state = (await evolutia(`/chats/${chatId}/state`)).body;
+    assert.equal(state.stripped[msgs.at(-1).seq], 'Hey there!');
+});
+
+test('assistant-apply creates/updates Alter Egos and Fields on Character and Persona and seeds Saved Prompts', async () => {
+    const personaId = await demetri('A laid-back student.');
+    const { id: charId, chatId } = await kael(null);
+    const applyRes = await evolutia('/assistant-apply', 'POST', {
+        chatId,
+        charId,
+        personaId,
+        ops: [
+            {
+                op: 'upsert-field',
+                side: 'char',
+                ego: 'main',
+                name: 'Secrets',
+                startsOn: false,
+                enabling: ['what is wrong'],
+                entryAction: 'Kael hesitates before speaking.',
+                content: 'He is hiding a cursed blade.',
+            },
+            {
+                op: 'upsert-ego',
+                side: 'persona',
+                name: 'Bambi',
+                promptName: 'Bambi',
+                disguise: true,
+                activating: ['bambi disguise'],
+                fields: [
+                    { name: 'Appearance', startsOn: true, content: 'Platinum waves and pink crop top.' },
+                ],
+            },
+            {
+                op: 'switch',
+                side: 'persona',
+                ego: 'Bambi',
+            },
+        ],
+    });
+    assert.equal(applyRes.status, 200, JSON.stringify(applyRes.body));
+    assert.equal(applyRes.body.summary.length, 3);
+
+    const state = (await evolutia(`/chats/${chatId}/state?charId=${charId}`)).body;
+    assert.equal(state.on, true);
+    assert.ok(state.egos[0].fields.some(f => f.name === 'Secrets' && f.phase === 'off'));
+    assert.equal(state.persona.ego.name, 'Bambi');
+    assert.equal(state.persona.ego.disguise, true);
+
+    const seedRes = await evolutia('/seed-prompts', 'POST', {});
+    assert.equal(seedRes.status, 200);
 });
 
 test('uploading a custom avatar returns an upload avatar descriptor and client page boots cleanly with __SIGMA_EVOLUTIA__', async () => {

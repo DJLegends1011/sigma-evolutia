@@ -1,11 +1,32 @@
 // Evolutia, the server half: Field Definitions on the card (and, for the Persona Side, in Evolutia's own table),
-// {{evolutia}} and {{evolutia_persona}} in place of the descriptions, and Field State worked out from the chat's
-// messages each time a prompt is built (ADR 0004).
+// {{evolutia}} and {{evolutia_persona}} in place of the descriptions, Field State worked out from the chat's
+// messages each time a prompt is built (ADR 0004), non-destructive pipeline trigger stripping, and Assistant /
+// Creator Studio integration (`cl-evolutia-edits`).
 import { deriveTimeline, promptFor, identityFor, badgeFor, stripTriggeredMessage } from '../client/core/evolve.js';
 import { switchPatch, definitionFromDescription } from '../client/core/definition.js';
+import {
+    formatEvolutiaBlueprint,
+    EVOLUTIA_ASSISTANT_DIRECTIVE,
+    applyEvolutiaOps,
+    EVOLUTIA_ASSISTANT_PROMPTS,
+    EVOLUTIA_CREATOR_PROMPTS,
+} from '../client/core/assistant.js';
+
 const CARDS = 'x_evolutia_cards';
 const PERSONAS = 'x_evolutia_personas';
 const PERSONA_MACRO = '{{evolutia_persona}}';
+
+const BUILTIN_ASSISTANT_STARTERS = [
+    { id: 'cas-starter-sum', icon: '📜', label: 'Summarise', text: 'Summarise what has happened in this story so far, in the order it happened.' },
+    { id: 'cas-starter-crit', icon: '🔎', label: 'Critique', text: "Critique {{char}}'s last reply as a writing partner: what works, what falls flat, what you would change." },
+    { id: 'cas-starter-dir', icon: '🧭', label: 'Directions', text: 'Suggest three directions this scene could go next, each in a sentence, without writing any of it.' },
+];
+
+const BUILTIN_CREATOR_STARTERS = [
+    { id: 'ccs-starter-draft', icon: '📝', label: 'Draft the card', text: 'Draft every field that is still empty from what we have discussed, as one batch of changes I can review.' },
+    { id: 'ccs-starter-tags', icon: '🏷️', label: 'Suggest tags', text: 'Suggest ten to fifteen tags for {{char}} as a tags change: lowercase, specific, none of the ones already set.' },
+    { id: 'ccs-starter-greet', icon: '👋', label: 'Three greetings', text: 'Write three alternate greetings for {{char}} as greeting changes, each opening the story from a different situation.' },
+];
 
 // append-only; which cards have Evolutia on, so list rows can carry it (the card badge)
 export const migrations = [
@@ -47,6 +68,42 @@ export function register(router, ctx) {
     // the persona a chat speaks as: its own, else the account's active one
     const chatPersona = (db, chatId) => ctx.stores.personas.resolvePersona(db, chatId)?.persona || null;
 
+    // Non-destructively seed Evolutia's Saved Prompts into `assistant-prompts` and `creator-studio-prompts`.
+    function ensureSavedPrompts(db) {
+        try {
+            const hasTable = db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'app_store'").get();
+            if (!hasTable) return false;
+            const mergeDoc = (key, builtinStarters, evoPrompts) => {
+                const row = db.prepare('SELECT value FROM app_store WHERE key = ?').get(key);
+                let parsed = null;
+                if (row?.value) {
+                    try { parsed = JSON.parse(row.value); } catch { parsed = null; }
+                }
+                const list = Array.isArray(parsed?.prompts)
+                    ? [...parsed.prompts]
+                    : [...builtinStarters];
+                let changed = !row;
+                for (const ep of evoPrompts) {
+                    if (!list.some(x => x.id === ep.id || x.label === ep.label)) {
+                        list.push({ ...ep });
+                        changed = true;
+                    }
+                }
+                if (changed) {
+                    db.prepare(`INSERT INTO app_store (key, value, updated_at) VALUES (?, ?, ?)
+                        ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`)
+                        .run(key, JSON.stringify({ version: parsed?.version || 1, prompts: list }), Date.now());
+                }
+                return changed;
+            };
+            const aChanged = mergeDoc('assistant-prompts', BUILTIN_ASSISTANT_STARTERS, EVOLUTIA_ASSISTANT_PROMPTS);
+            const cChanged = mergeDoc('creator-studio-prompts', BUILTIN_CREATOR_STARTERS, EVOLUTIA_CREATOR_PROMPTS);
+            return aChanged || cChanged;
+        } catch {
+            return false;
+        }
+    }
+
     // The chat's messages up to lastSeq, as the core reads them.
     function history(db, chatId, lastSeq) {
         const chat = ctx.prompt.read(db, chatId);
@@ -84,6 +141,32 @@ export function register(router, ctx) {
         };
     }
 
+    // Non-destructive trigger stripping across the timeline: computes { [seq]: strippedText } and a text->stripped
+    // map without ever mutating `chat_messages` in SQLite (preserving ADR 0004 timeline derivation and Sigma's
+    // read-only guard contract).
+    function computeStrippedMessages(db, s, h) {
+        if (!h || (!s.char && !s.persona)) return { bySeq: {}, byText: new Map() };
+        const cRun = s.char ? run(db, h, s.char, 'char') : null;
+        const pRun = s.persona ? run(db, h, s.persona.definition, 'persona') : null;
+        const bySeq = {};
+        const byText = new Map();
+        h.messages.forEach((m, i) => {
+            if (!m.text) return;
+            let text = m.text;
+            if (cRun) {
+                text = stripTriggeredMessage(s.char, cRun.timeline[i], m.role, text, 'char').text;
+            }
+            if (pRun) {
+                text = stripTriggeredMessage(s.persona.definition, pRun.timeline[i], m.role, text, 'persona').text;
+            }
+            if (text !== m.text) {
+                bySeq[h.seqs[i]] = text;
+                byText.set(m.text, text);
+            }
+        });
+        return { bySeq, byText, cRun, pRun };
+    }
+
     // What {{evolutia}}, {{evolutia_persona}} and the Action block say for the reply after lastSeq.
     function promptNow(db, chatId, charId, lastSeq) {
         const s = sides(db, chatId, charId);
@@ -112,53 +195,112 @@ export function register(router, ctx) {
         text: ({ db, chatId, charId, lastSeq }) => promptNow(db, chatId, charId, lastSeq)?.actionBlock ?? '',
     });
 
-    // Strip matched trigger keywords when stripTriggers is enabled on a Field or Alter Ego,
-    // recording the equivalent Manual Switch on that message so deriveTimeline still sees the transition.
-    ctx.hooks.add('store.before.message.created', (rec, { db }) => {
-        const chatId = rec.chatId;
-        const seqs = Array.isArray(rec.ids) ? rec.ids : [];
-        if (!chatId || !seqs.length) return;
-        const s = sides(db, chatId, null);
-        if (!s.char && !s.persona) return;
+    // Pipeline filter for non-destructive `stripTriggers`: strips matched trigger keywords from prompt messages
+    // (including the Prompt Inspector) while leaving the stored SQLite rows untouched.
+    ctx.hooks.add('prompt.final', (messages, { db, chatId, charId }) => {
+        if (!Array.isArray(messages) || !chatId) return messages;
+        const s = sides(db, chatId, charId);
+        if (!s.char && !s.persona) return messages;
+        const h = history(db, chatId, null);
+        const { byText } = computeStrippedMessages(db, s, h);
+        if (!byText.size) return messages;
+        return messages.map(m => {
+            if (!m || typeof m.content !== 'string') return m;
+            const stripped = byText.get(m.content);
+            return stripped !== undefined ? { ...m, content: stripped } : m;
+        });
+    });
 
-        for (const seq of seqs) {
-            const row = db.prepare('SELECT id, data FROM chat_messages WHERE chat_id = ? AND seq = ?').get(chatId, seq);
-            if (!row) continue;
-            let msg;
-            try { msg = JSON.parse(row.data); } catch { continue; }
-            if (!msg || msg.is_system || !msg.mes) continue;
+    // Assistant & Creator Studio context expansion + `cl-evolutia-edits` directive (Tiers 1 & 3)
+    ctx.hooks.add('llm.request', (req, info) => {
+        const db = info?.db;
+        const purpose = info?.purpose;
+        if (!db || !Array.isArray(req?.messages) || req.messages.length < 2) return req;
+        ensureSavedPrompts(db);
 
-            const hBefore = history(db, chatId, seq - 1);
-            if (!hBefore) continue;
-            const role = msg.is_user ? 'user' : 'char';
-            let text = String(msg.mes);
-            const addedManual = [];
+        if (purpose === 'assistant') {
+            let chatId = null;
+            try {
+                chatId = db.prepare('SELECT chat_id FROM assistant_sessions ORDER BY updated_at DESC LIMIT 1').get()?.chat_id || null;
+            } catch { chatId = null; }
+            if (!chatId) return req;
 
-            if (s.char) {
-                const cRun = run(db, hBefore, s.char, 'char');
-                const res = stripTriggeredMessage(s.char, cRun.timeline.at(-1), role, text, 'char');
-                text = res.text;
-                addedManual.push(...res.manual);
-            }
-            if (s.persona) {
-                const pRun = run(db, hBefore, s.persona.definition, 'persona');
-                const res = stripTriggeredMessage(s.persona.definition, pRun.timeline.at(-1), role, text, 'persona');
-                text = res.text;
-                addedManual.push(...res.manual);
-            }
+            const s = sides(db, chatId, null);
+            const h = history(db, chatId, null);
+            const { cRun, pRun } = computeStrippedMessages(db, s, h);
+            const messages = req.messages.map(m => ({ ...m }));
 
-            if (addedManual.length && text !== msg.mes) {
-                msg.mes = text;
-                if (Array.isArray(msg.swipes) && msg.swipes.length) {
-                    const sIdx = Math.min(Math.max(Number(msg.swipe_id) || 0, 0), msg.swipes.length - 1);
-                    msg.swipes[sIdx] = text;
+            // 1. Expand {{evolutia}} and append full Character & Persona Evolutia blueprints inside messages[1]
+            if (typeof messages[1]?.content === 'string') {
+                let ref = messages[1].content;
+                if (s.char && h) {
+                    const expandedChar = h.expand(cRun.said.evolutia || '');
+                    const charBlueprint = h.expand(formatEvolutiaBlueprint(s.char, cRun.timeline, 'char', h.charName));
+                    const replacement = [expandedChar, charBlueprint].filter(Boolean).join('\n\n');
+                    if (ref.includes('{{evolutia}}')) {
+                        ref = ref.replace(/\{\{evolutia\}\}/g, replacement);
+                    } else if (replacement) {
+                        ref = ref.replace(/(CHARACTER:\s*[^\n]+\n)/, `$1\n${replacement}\n`);
+                    }
                 }
-                const existingManual = msg.extra?.evolutia?.manual || [];
-                msg.extra = (msg.extra && typeof msg.extra === 'object' && !Array.isArray(msg.extra)) ? { ...msg.extra } : {};
-                msg.extra.evolutia = { ...(msg.extra.evolutia || {}), manual: [...existingManual, ...addedManual] };
-                db.prepare('UPDATE chat_messages SET data = ? WHERE chat_id = ? AND seq = ?').run(JSON.stringify(msg), chatId, seq);
+                if (s.persona && h) {
+                    const personaBlueprint = h.expand(formatEvolutiaBlueprint(s.persona.definition, pRun.timeline, 'persona', s.persona.name));
+                    if (ref.includes('{{evolutia_persona}}')) {
+                        ref = ref.replace(/\{\{evolutia_persona\}\}/g, personaBlueprint);
+                    } else if (personaBlueprint) {
+                        const anchor = ref.indexOf('\n\nLOREBOOKS');
+                        const msgAnchor = ref.indexOf('\n\nRECENT MESSAGES');
+                        const insertAt = anchor !== -1 ? anchor : (msgAnchor !== -1 ? msgAnchor : -1);
+                        if (insertAt !== -1) {
+                            ref = `${ref.slice(0, insertAt)}\n\n${personaBlueprint}${ref.slice(insertAt)}`;
+                        } else {
+                            ref = `${ref}\n\n${personaBlueprint}`;
+                        }
+                    }
+                }
+                messages[1].content = ref;
             }
+
+            // 2. Append cast disguise/alter-ego note + `cl-evolutia-edits` directive to messages[0]
+            if (typeof messages[0]?.content === 'string') {
+                let sys = messages[0].content;
+                if (s.persona && pRun) {
+                    const activePersonaEgo = s.persona.definition.alterEgos.find(e => e.id === pRun.timeline.at(-1)?.ego);
+                    if (activePersonaEgo && (activePersonaEgo.disguise || activePersonaEgo.id !== s.persona.definition.alterEgos[0]?.id)) {
+                        const asName = activePersonaEgo.promptName || activePersonaEgo.displayName || activePersonaEgo.name;
+                        sys += `\n\nEVOLUTIA SCENE NOTE: In the current scene, "${s.persona.name}" is active in the Evolutia Alter Ego "${asName}"${activePersonaEgo.disguise ? ' (Disguise mode: in-scene characters perceive them as ' + asName + ')' : ''}.`;
+                    }
+                }
+                if (!sys.includes('cl-evolutia-edits')) {
+                    sys += EVOLUTIA_ASSISTANT_DIRECTIVE;
+                }
+                messages[0].content = sys;
+            }
+
+            return { ...req, messages };
         }
+
+        if (purpose === 'creator') {
+            let charId = null;
+            try {
+                charId = db.prepare('SELECT char_id FROM studio_sessions ORDER BY updated_at DESC LIMIT 1').get()?.char_id || null;
+            } catch { charId = null; }
+            const ev = charId ? evolutiaOf(db, charId) : null;
+            const c = charId ? chars.getCharacter(db, charId) : null;
+            const charName = c?.card?.data?.name || 'Character';
+            const messages = req.messages.map(m => ({ ...m }));
+
+            if (typeof messages[1]?.content === 'string' && ev?.definition) {
+                const blueprint = formatEvolutiaBlueprint(ev.definition, null, 'char', charName);
+                messages[1].content = messages[1].content.replace(/\{\{evolutia\}\}/g, blueprint);
+            }
+            if (typeof messages[0]?.content === 'string' && !messages[0].content.includes('cl-evolutia-edits')) {
+                messages[0].content += EVOLUTIA_ASSISTANT_DIRECTIVE;
+            }
+            return { ...req, messages };
+        }
+
+        return req;
     });
 
     // ---- the Persona Side's routes
@@ -221,12 +363,14 @@ export function register(router, ctx) {
         return res.json({ ok: true });
     });
 
-    // What the chat window and the Display Identity read: each side's state after the newest message, and whose
-    // Alter Ego wrote each message (the character's replies, the user's messages).
+    // What the chat window and the Display Identity read: each side's state after the newest message, whose
+    // Alter Ego wrote each message, and any non-destructively stripped message texts (`stripped`).
     router.get('/chats/:chatId/state', ctx.requireChat, (req, res) => {
         const db = req.db, chatId = req.params.chatId;
+        ensureSavedPrompts(db);
         const s = sides(db, chatId, req.query.charId ? String(req.query.charId) : null);
         const h = history(db, chatId, null);
+        const { bySeq: stripped } = computeStrippedMessages(db, s, h);
         const view = (definition, side) => {
             const { opts, messages, timeline, said } = run(db, h, definition, side);
             const now = timeline.at(-1);
@@ -258,6 +402,7 @@ export function register(router, ctx) {
             on: !!s.char,
             charId: s.charId,
             personaMeta: s.personaMeta,
+            stripped,
             ...(s.char ? view(s.char, 'char') : {}),
             persona: s.persona ? { id: s.persona.id, name: s.persona.name, ...view(s.persona.definition, 'persona') } : null,
         });
@@ -276,6 +421,87 @@ export function register(router, ctx) {
         const manual = [...(newest.msg.extra?.evolutia?.manual || []), sw];
         ctx.stores.chats.patchChatMessage(req.db, req.params.chatId, newest.seq, { extra: { evolutia: { manual } } }, { messageId: newest.id });
         return res.json({ seq: newest.seq, manual });
+    });
+
+    // Apply `cl-evolutia-edits` proposals from the Chat Assistant or Creator Studio
+    router.post('/assistant-apply', (req, res) => {
+        const db = req.db;
+        const { chatId = null, charId = null, personaId = null, ops = [] } = req.body || {};
+        if (!Array.isArray(ops) || !ops.length) {
+            return res.status(400).json({ error: 'ops array is required' });
+        }
+
+        const resolvedCharId = charId
+            || (chatId ? db.prepare('SELECT char_id FROM chats WHERE id = ?').get(chatId)?.char_id : null)
+            || (() => {
+                try { return db.prepare('SELECT char_id FROM studio_sessions ORDER BY updated_at DESC LIMIT 1').get()?.char_id || null; }
+                catch { return null; }
+            })();
+        const resolvedPersona = personaId
+            ? ctx.stores.personas.getPersona(db, personaId)
+            : chatPersona(db, chatId);
+
+        const appliedSummary = [];
+        const allSwitches = [];
+
+        db.transaction(() => {
+            if (resolvedCharId) {
+                const c = chars.getCharacter(db, resolvedCharId);
+                if (c) {
+                    const ev = c.card.data.extensions?.evolutia || {};
+                    const fallbackDesc = ev.originalDescription ?? (c.card.data.description === '{{evolutia}}' ? '' : (c.card.data.description ?? ''));
+                    const charRes = applyEvolutiaOps(ev.definition, fallbackDesc, ops, 'char');
+                    if (charRes.changed) {
+                        const patchFields = { 'extensions.evolutia.definition': charRes.definition };
+                        if (!ev.on) {
+                            const onPatch = switchPatch({
+                                description: c.card.data.description ?? '',
+                                extensions: { evolutia: { ...ev, definition: charRes.definition } },
+                            }, true);
+                            if (onPatch) Object.assign(patchFields, onPatch);
+                        }
+                        chars.patchCharacter(db, resolvedCharId, { fields: patchFields });
+                        appliedSummary.push(...charRes.summary);
+                        allSwitches.push(...charRes.switches);
+                    }
+                }
+            }
+
+            if (resolvedPersona) {
+                const pRow = personaRow(db, resolvedPersona.id);
+                const fallbackDesc = pRow.original ?? (resolvedPersona.description === PERSONA_MACRO ? '' : (resolvedPersona.description ?? ''));
+                const pRes = applyEvolutiaOps(pRow.definition, fallbackDesc, ops, 'persona');
+                if (pRes.changed) {
+                    if (!pRow.on) {
+                        const original = resolvedPersona.description === PERSONA_MACRO ? (pRow.original ?? '') : (resolvedPersona.description ?? '');
+                        writePersonaRow(db, resolvedPersona.id, { on: true, original, definition: pRes.definition });
+                        ctx.stores.personas.updatePersona(db, resolvedPersona.id, { description: PERSONA_MACRO });
+                    } else {
+                        writePersonaRow(db, resolvedPersona.id, { ...pRow, definition: pRes.definition });
+                    }
+                    appliedSummary.push(...pRes.summary);
+                    allSwitches.push(...pRes.switches);
+                }
+            }
+
+            if (chatId && allSwitches.length) {
+                const newest = ctx.prompt.read(db, chatId)?.history.at(-1);
+                if (newest) {
+                    const manual = [...(newest.msg.extra?.evolutia?.manual || []), ...allSwitches];
+                    ctx.stores.chats.patchChatMessage(db, chatId, newest.seq, { extra: { evolutia: { manual } } }, { messageId: newest.id });
+                }
+            }
+        })();
+
+        if (!appliedSummary.length) {
+            return res.status(400).json({ error: 'No matching Character or Persona found for these operations' });
+        }
+        return res.json({ ok: true, summary: appliedSummary, charId: resolvedCharId, personaId: resolvedPersona?.id || null });
+    });
+
+    router.post('/seed-prompts', (req, res) => {
+        const seeded = ensureSavedPrompts(req.db);
+        res.json({ ok: true, seeded });
     });
 
     // On: the Description becomes {{evolutia}}, the Original Description kept. Off: it comes back.

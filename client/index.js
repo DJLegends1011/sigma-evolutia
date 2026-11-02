@@ -6,8 +6,10 @@ import { cardOwner, resolveAvatarThumb } from './owners.js';
 import { mountPanel } from './panel.js';
 import { createIdentity } from './identity.js';
 import { mountPersonaSettings } from './persona-settings.js';
+import { mountAssistantBridge } from './assistant-bridge.js';
 
 let unmountPersonaSettings = () => {};
+let unmountAssistantBridge = () => {};
 
 export default {
     init(ctx) {
@@ -40,6 +42,16 @@ export default {
 
         // the Persona Side's block in Settings › Chat
         unmountPersonaSettings = mountPersonaSettings(ctx, { bigEditor });
+
+        // Assistant & Creator Studio bridge (`cl-evolutia-edits` review cards + Saved Prompts seeding)
+        unmountAssistantBridge = mountAssistantBridge(ctx, {
+            getChatId: () => activeChatId,
+            getCharId: () => activeCharacter?.id || null,
+            onApplied: () => {
+                identity.refreshSoon();
+                if (view?.isOpen()) view.reloadSoon();
+            },
+        });
 
         ctx.ui.addChatWindow({
             id: 'evolutia',
@@ -202,6 +214,7 @@ export default {
     // the host undoes what went through ctx; the Settings block and window handle are Evolutia's own
     dispose() {
         unmountPersonaSettings();
+        unmountAssistantBridge();
         if (typeof window !== 'undefined' && window.__SIGMA_EVOLUTIA__) {
             delete window.__SIGMA_EVOLUTIA__;
         }

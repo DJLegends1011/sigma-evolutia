@@ -537,3 +537,137 @@
     padding: 12px;
     overflow-y: auto;
 }
+
+/* Assistant & Creator Studio Evolutia Proposal Cards (`cl-evolutia-edits`) */
+.evo-prop-card {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin: 10px 0;
+    padding: 12px;
+    border-radius: 10px;
+    background: var(--glass-bg, rgba(255, 255, 255, 0.04));
+    border: 1px solid var(--cl-accent-tint-border, rgba(56, 189, 248, 0.32));
+}
+
+.evo-prop-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.evo-prop-head-title {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 700;
+    font-size: 0.88rem;
+}
+
+.evo-prop-head-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.evo-prop-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.evo-prop-item {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 10px;
+    border-radius: 8px;
+    background: rgba(0, 0, 0, 0.22);
+    border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
+}
+
+.evo-prop-item-head {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.evo-prop-badge {
+    padding: 1px 7px;
+    border-radius: 999px;
+    font-size: 0.68rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+
+.evo-prop-badge.is-char {
+    background: rgba(56, 189, 248, 0.16);
+    color: #7dd3fc;
+    border: 1px solid rgba(56, 189, 248, 0.32);
+}
+
+.evo-prop-badge.is-persona {
+    background: rgba(168, 85, 247, 0.16);
+    color: #d8b4fe;
+    border: 1px solid rgba(168, 85, 247, 0.32);
+}
+
+.evo-prop-op {
+    font-size: 0.72rem;
+    color: var(--text-secondary, #9aa4bf);
+}
+
+.evo-prop-op.is-danger {
+    color: var(--danger, #f87171);
+}
+
+.evo-prop-title {
+    font-size: 0.84rem;
+}
+
+.evo-prop-meta {
+    font-size: 0.76rem;
+    color: var(--text-secondary, #9aa4bf);
+}
+
+.evo-kw-pill {
+    padding: 1px 6px;
+    border-radius: 5px;
+    background: rgba(255, 255, 255, 0.08);
+    font-size: 0.72rem;
+}
+
+.evo-prop-fields {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.evo-prop-field {
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    padding: 6px 8px;
+}
+
+.evo-prop-field > summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    cursor: pointer;
+    font-size: 0.8rem;
+    font-weight: 600;
+}
+
+.evo-prop-field-body {
+    margin-top: 6px;
+    font-size: 0.78rem;
+    white-space: pre-wrap;
+    color: var(--text-secondary, #c5cee0);
+    max-height: 160px;
+    overflow-y: auto;
+}

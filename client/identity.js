@@ -5,16 +5,19 @@ import { resolveAvatarThumb } from './owners.js';
 
 const NAME = '.chat-conv-msg-name';
 const AVATAR = 'img.chat-conv-msg-avatar';
+const TEXT = '.chat-conv-msg-text';
 
 export function createIdentity(ctx) {
     const { CoreAPI } = ctx;
-    let chatId = null, charId = null, identities = {}, badges = {}, reading = 0;
+    let chatId = null, charId = null, identities = {}, badges = {}, stripped = {}, reading = 0;
 
     function draw(el, seq) {
         const who = identities[seq];
         const badge = badges[seq];
+        const strippedText = stripped[seq];
         const name = el.querySelector(NAME);
         const img = el.querySelector(AVATAR);
+        const textEl = el.querySelector(TEXT);
         if (name) {
             el.dataset.evoName ??= name.textContent;
             name.textContent = who?.name ?? el.dataset.evoName;
@@ -36,6 +39,20 @@ export function createIdentity(ctx) {
             const src = resolveAvatarThumb(who?.avatar, CoreAPI, 192) || el.dataset.evoSrc;
             if (img.getAttribute('src') !== src) img.setAttribute('src', src);
         }
+        if (textEl && typeof CoreAPI?.formatChatText === 'function') {
+            if (strippedText != null) {
+                el.dataset.evoOrigHtml ??= textEl.innerHTML;
+                if (el.dataset.evoStripped !== strippedText) {
+                    el.dataset.evoStripped = strippedText;
+                    const formatted = CoreAPI.formatChatText(strippedText);
+                    textEl.innerHTML = typeof CoreAPI.safePurify === 'function' ? CoreAPI.safePurify(formatted) : formatted;
+                }
+            } else if (el.dataset.evoOrigHtml !== undefined) {
+                textEl.innerHTML = el.dataset.evoOrigHtml;
+                delete el.dataset.evoOrigHtml;
+                delete el.dataset.evoStripped;
+            }
+        }
     }
 
     function drawAll() {
@@ -45,19 +62,26 @@ export function createIdentity(ctx) {
 
     async function refresh() {
         const mine = ++reading;
-        if (!chatId) { identities = {}; badges = {}; drawAll(); return; }
+        if (!chatId) { identities = {}; badges = {}; stripped = {}; drawAll(); return; }
         try {
             const state = await ctx.server.call(`/chats/${encodeURIComponent(chatId)}/state${charId ? `?charId=${encodeURIComponent(charId)}` : ''}`);
             if (mine !== reading) return;
             // the character's replies and the user's messages, each by its own side's Alter Egos
             identities = { ...(state.on ? state.identities : {}), ...(state.persona?.identities || {}) };
             badges = { ...(state.on ? state.badges : {}), ...(state.persona?.badges || {}) };
+            stripped = state.stripped || {};
         } catch {
-            if (mine === reading) { identities = {}; badges = {}; }
+            if (mine === reading) { identities = {}; badges = {}; stripped = {}; }
         }
         drawAll();
     }
 
+    ctx.hooks.add('message.render', (html, { chatId: shown, seq, format }) => {
+        if (shown === chatId && stripped[seq] != null && typeof format === 'function') {
+            return format(stripped[seq]);
+        }
+        return html;
+    });
     ctx.hooks.add('message.enhance', ({ chatId: shown, seq, el }) => { if (shown === chatId) draw(el, seq); });
     ctx.events.on('conversation.changed', (e) => { chatId = e.chatId; charId = e.charId; refresh(); });
 

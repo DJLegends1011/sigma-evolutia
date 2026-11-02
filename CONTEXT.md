@@ -87,3 +87,12 @@ _Avoid_: user fields, player fields
 
 **Branch**:
 A chat created from another chat at a message. It inherits the parent's Field State and active Alter Ego as of that message.
+
+**Disguise Mode**:
+An Alter Ego flag (`disguise: true`) indicating an in-scene disguise or separate identity. When active, `{{evolutia}}` / `{{evolutia_persona}}` instructs the model to treat the character or persona as presenting under that identity in-scene, and the message header displays a `Disguise` badge.
+
+**Strip Triggers (`stripTriggers`)**:
+An optional flag on a Field or Alter Ego that removes matched trigger keywords from the outgoing LLM prompt (`prompt.final`) and rendered chat bubble (`message.render` / `message.enhance`) without mutating the stored message row in SQLite, preserving pure timeline derivation (ADR 0004).
+
+**Assistant Proposals (`cl-evolutia-edits`)**:
+Fenced JSON blocks emitted by Project Σ's Chat Assistant or Creator Studio when asked to create, split, or distill Evolutia Alter Egos, Fields, and Triggers, rendered in the Assistant panel as interactive review cards with 1-click Apply.
