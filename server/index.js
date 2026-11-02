@@ -39,6 +39,8 @@ export const migrations = [
         enabled INTEGER NOT NULL DEFAULT 0,
         original TEXT,
         definition TEXT CHECK (definition IS NULL OR json_valid(definition))) WITHOUT ROWID;`,
+    // timestamp for LAN Sync's Prefer-newer rule when a persona's Evolutia definition is edited independently of the persona row
+    `ALTER TABLE ${PERSONAS} ADD COLUMN updated_at INTEGER NOT NULL DEFAULT 0;`,
 ];
 
 export function register(router, ctx) {
@@ -89,14 +91,17 @@ export function register(router, ctx) {
 
     // ---- the Persona Side's row
     const personaRow = (db, personaId) => {
-        const r = personaId && db.prepare(`SELECT enabled, original, definition FROM ${PERSONAS} WHERE persona_id = ?`).get(personaId);
-        return r ? { on: !!r.enabled, original: r.original, definition: r.definition ? JSON.parse(r.definition) : null } : { on: false, original: null, definition: null };
+        const r = personaId && db.prepare(`SELECT enabled, original, definition, updated_at FROM ${PERSONAS} WHERE persona_id = ?`).get(personaId);
+        return r
+            ? { on: !!r.enabled, original: r.original, definition: r.definition ? JSON.parse(r.definition) : null, updatedAt: r.updated_at ?? 0 }
+            : { on: false, original: null, definition: null, updatedAt: 0 };
     };
     // a report belongs inside its write's transaction (a nested one joins the caller's)
     const writePersonaRow = (db, personaId, row) => db.transaction(() => {
-        db.prepare(`INSERT INTO ${PERSONAS} (persona_id, enabled, original, definition) VALUES (?, ?, ?, ?)
-            ON CONFLICT(persona_id) DO UPDATE SET enabled = excluded.enabled, original = excluded.original, definition = excluded.definition`)
-            .run(personaId, row.on ? 1 : 0, row.original ?? null, row.definition ? JSON.stringify(row.definition) : null);
+        const updatedAt = row.updatedAt ?? Date.now();
+        db.prepare(`INSERT INTO ${PERSONAS} (persona_id, enabled, original, definition, updated_at) VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(persona_id) DO UPDATE SET enabled = excluded.enabled, original = excluded.original, definition = excluded.definition, updated_at = excluded.updated_at`)
+            .run(personaId, row.on ? 1 : 0, row.original ?? null, row.definition ? JSON.stringify(row.definition) : null, updatedAt);
         ctx.report(db, { entity: 'persona', op: 'updated', ids: [personaId], fields: ['evolutia'] });
     })();
     // the persona a chat speaks as: its own, else the account's active one
