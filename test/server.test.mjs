@@ -311,7 +311,7 @@ test('uploading a custom avatar returns an upload avatar descriptor and client p
     try {
         await page.boot();
         assert.ok(globalThis.window?.__SIGMA_EVOLUTIA__, 'window.__SIGMA_EVOLUTIA__ is exposed');
-        assert.equal(globalThis.window.__SIGMA_EVOLUTIA__.version, '0.3.0');
+        assert.equal(globalThis.window.__SIGMA_EVOLUTIA__.version, '0.3.1');
     } finally {
         await page.close();
     }

@@ -1,13 +1,20 @@
 {
     "id": "evolutia",
     "name": "Evolutia",
-    "version": "0.3.0",
+    "version": "0.3.1",
     "author": "DJLegends1011",
     "description": "Lets a character's or persona's definition change as the story unfolds: split the Description into Fields that Triggers switch on and off, with Entry and Exit Actions and whole Alter Egos. Each chat keeps its own state, worked out from its messages. Reimagined from Genisai's Aspect: Evolutia for SillyTavern, with his permission.",
     "requires": {
         "api": 2
     },
     "defaultOff": true,
+    "lanSync": {
+        "tables": [
+            "x_evolutia_personas",
+            "x_evolutia_cards"
+        ],
+        "files": true
+    },
     "contributes": [
         "character.card.badge",
         "character.details.tab",

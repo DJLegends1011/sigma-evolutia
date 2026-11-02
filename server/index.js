@@ -45,6 +45,40 @@ export function register(router, ctx) {
     const chars = ctx.stores.characters;
     ctx.query.projection({ key: 'on', table: CARDS, column: 'enabled' });
     const evolutiaOf = (db, charId) => chars.getCharacter(db, charId)?.card.data.extensions?.evolutia || null;
+    const initializedDbs = new WeakSet();
+
+    // Rebuild x_evolutia_cards from the characters table (at server start and after LAN Sync).
+    function rebuildCardsTable(db) {
+        if (!db) return;
+        try {
+            const rows = db.prepare('SELECT id, card FROM characters').all();
+            const read = db.prepare(`SELECT enabled FROM ${CARDS} WHERE char_id = ?`);
+            const write = db.prepare(`INSERT INTO ${CARDS} (char_id, enabled) VALUES (?, ?) ON CONFLICT(char_id) DO UPDATE SET enabled = excluded.enabled`);
+            const changed = [];
+            db.transaction(() => {
+                db.prepare(`DELETE FROM ${CARDS} WHERE char_id NOT IN (SELECT id FROM characters)`).run();
+                for (const r of rows) {
+                    let on = 0;
+                    try { on = JSON.parse(r.card)?.data?.extensions?.evolutia?.on ? 1 : 0; } catch { on = 0; }
+                    if ((read.get(r.id)?.enabled ?? -1) === on) continue;
+                    write.run(r.id, on);
+                    changed.push(r.id);
+                }
+                if (changed.length) ctx.report(db, { entity: 'character', op: 'updated', ids: changed, fields: ['evolutia.on'] });
+            })();
+        } catch { /* ignore if table not ready yet */ }
+    }
+
+    function ensureDbInitialized(db) {
+        if (!db || initializedDbs.has(db)) return;
+        initializedDbs.add(db);
+        rebuildCardsTable(db);
+    }
+
+    router.use((req, _res, next) => {
+        ensureDbInitialized(req.db);
+        next();
+    });
 
     // the definition's own settings (Q24), else the account's
     const options = (db, name, definition) => {
@@ -532,6 +566,11 @@ export function register(router, ctx) {
         res.json({ ok: true, seeded });
     });
 
+    router.post('/rebuild-cards', (req, res) => {
+        rebuildCardsTable(req.db);
+        res.json({ ok: true });
+    });
+
     // On: the Description becomes {{evolutia}}, the Original Description kept. Off: it comes back.
     // (The Evolutia tab makes the same write through the app's own character.update.)
     router.put('/characters/:id/on', (req, res) => {
@@ -575,8 +614,13 @@ export function register(router, ctx) {
         }
     });
 
-    // The badge's table follows every write to a card, whoever made it.
+    // The badge's table follows every write to a card (and full-library resyncs), whoever made it.
     ctx.events.on((records, { db }) => {
+        ensureDbInitialized(db);
+        if (records.some(r => r.entity === 'library')) {
+            rebuildCardsTable(db);
+            return;
+        }
         const ids = new Set(records.filter(r => r.entity === 'character' && (r.op === 'created' || r.op === 'updated') && !r.extension)
             .flatMap(r => r.ids || []).map(String));
         if (!ids.size) return;

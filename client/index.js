@@ -200,13 +200,22 @@ export default {
 
         ctx.commands.register('open-switcher', async (opts = {}) => openSwitchEgoDialog(opts), { title: 'Evolutia: Open Alter Ego Switcher' });
 
+        const afterSyncHandler = async () => {
+            await ctx.server.call('/rebuild-cards', 'POST', {});
+            identity.refreshSoon();
+            if (view?.isOpen()) view.reloadSoon();
+        };
+        ctx.commands.register('after-sync', afterSyncHandler, { title: 'Evolutia: Rebuild Cards After Sync' });
+        try { ctx.commands.register('afterSync', afterSyncHandler, { title: 'Evolutia: Rebuild Cards After Sync' }); } catch { /* host requires lowercase */ }
+
         if (typeof window !== 'undefined') {
             window.__SIGMA_EVOLUTIA__ = Object.freeze({
-                version: '0.3.0',
+                version: '0.3.1',
                 getState: (opts = {}) => ctx.commands.run('evolutia.get-state', opts),
                 switchEgo: (opts = {}) => ctx.commands.run('evolutia.switch-ego', opts),
                 switchField: (opts = {}) => ctx.commands.run('evolutia.switch-field', opts),
                 openQuickSwitcher: (opts = {}) => openSwitchEgoDialog(opts),
+                afterSync: () => afterSyncHandler(),
             });
         }
     },
