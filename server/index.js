@@ -70,13 +70,18 @@ export function register(router, ctx) {
                 if (changed.length) ctx.report(db, { entity: 'character', op: 'updated', ids: changed, fields: ['evolutia.on'] });
 
                 const pRows = db.prepare(`SELECT persona_id, enabled, original FROM ${PERSONAS} WHERE enabled = 1`).all();
+                const changedPersonas = [];
                 for (const pr of pRows) {
                     const p = ctx.stores.personas.getPersona(db, pr.persona_id);
                     if (!p || p.description === PERSONA_MACRO) continue;
                     if (pr.original == null && p.description) {
                         db.prepare(`UPDATE ${PERSONAS} SET original = ? WHERE persona_id = ?`).run(p.description, pr.persona_id);
                     }
-                    ctx.stores.personas.updatePersona(db, pr.persona_id, { description: PERSONA_MACRO });
+                    db.prepare('UPDATE personas SET description = ? WHERE id = ?').run(PERSONA_MACRO, pr.persona_id);
+                    changedPersonas.push(pr.persona_id);
+                }
+                if (changedPersonas.length) {
+                    ctx.report(db, { entity: 'persona', op: 'updated', ids: changedPersonas, fields: ['evolutia'] });
                 }
             })();
         } catch { /* ignore if table not ready yet */ }
@@ -632,11 +637,13 @@ export function register(router, ctx) {
 
     // The badge's table follows every write to a card (and full-library resyncs), whoever made it.
     ctx.events.on((records, { db }) => {
-        ensureDbInitialized(db);
-        if (records.some(r => r.entity === 'library')) {
+        if (records.some(r => r.entity === 'library'
+            || ((r.entity === 'character' || r.entity === 'persona') && r.all && r.extension !== 'evolutia'))) {
+            initializedDbs.add(db);
             rebuildCardsTable(db);
             return;
         }
+        ensureDbInitialized(db);
         const ids = new Set(records.filter(r => r.entity === 'character' && (r.op === 'created' || r.op === 'updated') && !r.extension)
             .flatMap(r => r.ids || []).map(String));
         if (!ids.size) return;
