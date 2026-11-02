@@ -68,11 +68,16 @@ export function register(router, ctx) {
     // the persona a chat speaks as: its own, else the account's active one
     const chatPersona = (db, chatId) => ctx.stores.personas.resolvePersona(db, chatId)?.persona || null;
 
-    // Non-destructively seed Evolutia's Saved Prompts into `assistant-prompts` and `creator-studio-prompts` once.
-    // Records `evolutiaSeeded: true` on the stored document so prompts deleted by the user never come back
-    // unless `force: true` is explicitly requested.
-    function ensureSavedPrompts(db, { force = false } = {}) {
+    // Non-destructively seed Evolutia's Saved Prompts into `assistant-prompts` and `creator-studio-prompts` once per user.
+    // Keeps the marker in Evolutia's own per-user file folder (`ctx.files.user(req)`) so when Sigma's `ai-panel.js`
+    // re-saves `{ version, prompts }`, the marker is never lost and deleted prompts never come back.
+    function ensureSavedPrompts(req, { force = false } = {}) {
         try {
+            const db = req.db;
+            const userFiles = ctx.files.user(req);
+            const marker = userFiles.readJson('seeded-prompts.json', null);
+            if (marker?.seeded && !force) return false;
+
             const hasTable = db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'app_store'").get();
             if (!hasTable) return false;
             const mergeDoc = (key, builtinStarters, evoPrompts) => {
@@ -81,7 +86,6 @@ export function register(router, ctx) {
                 if (row?.value) {
                     try { parsed = JSON.parse(row.value); } catch { parsed = null; }
                 }
-                if (parsed?.evolutiaSeeded && !force) return false;
                 const list = Array.isArray(parsed?.prompts)
                     ? [...parsed.prompts]
                     : [...builtinStarters];
@@ -92,12 +96,13 @@ export function register(router, ctx) {
                 }
                 db.prepare(`INSERT INTO app_store (key, value, updated_at) VALUES (?, ?, ?)
                     ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`)
-                    .run(key, JSON.stringify({ ...(parsed || {}), version: parsed?.version || 1, evolutiaSeeded: true, prompts: list }), Date.now());
+                    .run(key, JSON.stringify({ version: parsed?.version || 1, prompts: list }), Date.now());
                 return true;
             };
-            const aChanged = mergeDoc('assistant-prompts', BUILTIN_ASSISTANT_STARTERS, EVOLUTIA_ASSISTANT_PROMPTS);
-            const cChanged = mergeDoc('creator-studio-prompts', BUILTIN_CREATOR_STARTERS, EVOLUTIA_CREATOR_PROMPTS);
-            return aChanged || cChanged;
+            mergeDoc('assistant-prompts', BUILTIN_ASSISTANT_STARTERS, EVOLUTIA_ASSISTANT_PROMPTS);
+            mergeDoc('creator-studio-prompts', BUILTIN_CREATOR_STARTERS, EVOLUTIA_CREATOR_PROMPTS);
+            userFiles.writeJson('seeded-prompts.json', { seeded: true, at: Date.now() });
+            return true;
         } catch {
             return false;
         }
@@ -523,7 +528,7 @@ export function register(router, ctx) {
     });
 
     router.post('/seed-prompts', (req, res) => {
-        const seeded = ensureSavedPrompts(req.db, { force: !!req.body?.force });
+        const seeded = ensureSavedPrompts(req, { force: !!req.body?.force });
         res.json({ ok: true, seeded });
     });
 

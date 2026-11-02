@@ -285,6 +285,20 @@ test('assistant-apply creates/updates Alter Egos and Fields on Character and Per
 
     const seedRes = await evolutia('/seed-prompts', 'POST', {});
     assert.equal(seedRes.status, 200);
+    assert.equal(seedRes.body.seeded, true);
+
+    // Deleting a seeded prompt via Sigma's store route ({ version, prompts } with no extra keys)
+    // and calling /seed-prompts again must NOT resurrect the deleted prompt.
+    const doc1 = (await me.api('/store/assistant-prompts')).body;
+    assert.ok(doc1.prompts.some(p => p.id === 'evo-distill-ego'));
+    const filtered = doc1.prompts.filter(p => p.id !== 'evo-distill-ego');
+    await me.api('/store/assistant-prompts', 'PUT', { version: 1, prompts: filtered });
+
+    const seedAgain = await evolutia('/seed-prompts', 'POST', {});
+    assert.equal(seedAgain.status, 200);
+    assert.equal(seedAgain.body.seeded, false);
+    const doc2 = (await me.api('/store/assistant-prompts')).body;
+    assert.ok(!doc2.prompts.some(p => p.id === 'evo-distill-ego'), 'deleted prompt stays deleted');
 });
 
 test('uploading a custom avatar returns an upload avatar descriptor and client page boots cleanly with __SIGMA_EVOLUTIA__', async () => {
