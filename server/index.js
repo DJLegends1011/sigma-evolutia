@@ -68,8 +68,10 @@ export function register(router, ctx) {
     // the persona a chat speaks as: its own, else the account's active one
     const chatPersona = (db, chatId) => ctx.stores.personas.resolvePersona(db, chatId)?.persona || null;
 
-    // Non-destructively seed Evolutia's Saved Prompts into `assistant-prompts` and `creator-studio-prompts`.
-    function ensureSavedPrompts(db) {
+    // Non-destructively seed Evolutia's Saved Prompts into `assistant-prompts` and `creator-studio-prompts` once.
+    // Records `evolutiaSeeded: true` on the stored document so prompts deleted by the user never come back
+    // unless `force: true` is explicitly requested.
+    function ensureSavedPrompts(db, { force = false } = {}) {
         try {
             const hasTable = db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'app_store'").get();
             if (!hasTable) return false;
@@ -79,22 +81,19 @@ export function register(router, ctx) {
                 if (row?.value) {
                     try { parsed = JSON.parse(row.value); } catch { parsed = null; }
                 }
+                if (parsed?.evolutiaSeeded && !force) return false;
                 const list = Array.isArray(parsed?.prompts)
                     ? [...parsed.prompts]
                     : [...builtinStarters];
-                let changed = !row;
                 for (const ep of evoPrompts) {
                     if (!list.some(x => x.id === ep.id || x.label === ep.label)) {
                         list.push({ ...ep });
-                        changed = true;
                     }
                 }
-                if (changed) {
-                    db.prepare(`INSERT INTO app_store (key, value, updated_at) VALUES (?, ?, ?)
-                        ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`)
-                        .run(key, JSON.stringify({ version: parsed?.version || 1, prompts: list }), Date.now());
-                }
-                return changed;
+                db.prepare(`INSERT INTO app_store (key, value, updated_at) VALUES (?, ?, ?)
+                    ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`)
+                    .run(key, JSON.stringify({ ...(parsed || {}), version: parsed?.version || 1, evolutiaSeeded: true, prompts: list }), Date.now());
+                return true;
             };
             const aChanged = mergeDoc('assistant-prompts', BUILTIN_ASSISTANT_STARTERS, EVOLUTIA_ASSISTANT_PROMPTS);
             const cChanged = mergeDoc('creator-studio-prompts', BUILTIN_CREATOR_STARTERS, EVOLUTIA_CREATOR_PROMPTS);
@@ -206,23 +205,44 @@ export function register(router, ctx) {
         if (!byText.size) return messages;
         return messages.map(m => {
             if (!m || typeof m.content !== 'string') return m;
-            const stripped = byText.get(m.content);
-            return stripped !== undefined ? { ...m, content: stripped } : m;
+            const exact = byText.get(m.content);
+            if (exact !== undefined) return { ...m, content: exact };
+            for (const [orig, cleaned] of byText.entries()) {
+                if (m.content.endsWith(`: ${orig}`) || m.content.endsWith(`\n${orig}`)) {
+                    return { ...m, content: m.content.slice(0, m.content.length - orig.length) + cleaned };
+                }
+            }
+            return m;
         });
     });
 
-    // Assistant & Creator Studio context expansion + `cl-evolutia-edits` directive (Tiers 1 & 3)
+    // Assistant & Creator Studio context expansion + `cl-evolutia-edits` directive (Tiers 1 & 3, strictly read-only)
     ctx.hooks.add('llm.request', (req, info) => {
         const db = info?.db;
         const purpose = info?.purpose;
         if (!db || !Array.isArray(req?.messages) || req.messages.length < 2) return req;
-        ensureSavedPrompts(db);
 
         if (purpose === 'assistant') {
-            let chatId = null;
-            try {
-                chatId = db.prepare('SELECT chat_id FROM assistant_sessions ORDER BY updated_at DESC LIMIT 1').get()?.chat_id || null;
-            } catch { chatId = null; }
+            const refText = String(req.messages[1]?.content || '');
+            const charMatch = refText.match(/CHARACTER:\s*([^\n]+)/);
+            const refCharName = charMatch ? charMatch[1].trim() : null;
+            let chatId = info?.chatId || null;
+            if (!chatId) {
+                try {
+                    const sessions = db.prepare(`
+                        SELECT a.chat_id, c.char_id
+                        FROM assistant_sessions a
+                        JOIN chats c ON c.id = a.chat_id
+                        ORDER BY a.updated_at DESC LIMIT 10
+                    `).all();
+                    if (refCharName) {
+                        const matched = sessions.find(row => chars.getCharacter(db, row.char_id)?.card?.data?.name === refCharName);
+                        chatId = matched?.chat_id || sessions[0]?.chat_id || null;
+                    } else {
+                        chatId = sessions[0]?.chat_id || null;
+                    }
+                } catch { chatId = null; }
+            }
             if (!chatId) return req;
 
             const s = sides(db, chatId, null);
@@ -240,7 +260,7 @@ export function register(router, ctx) {
                     if (ref.includes('{{evolutia}}')) {
                         ref = ref.replace(/\{\{evolutia\}\}/g, replacement);
                     } else if (replacement) {
-                        ref = ref.replace(/(CHARACTER:\s*[^\n]+\n)/, `$1\n${replacement}\n`);
+                        ref = `${ref}\n\n${replacement}`;
                     }
                 }
                 if (s.persona && h) {
@@ -248,14 +268,7 @@ export function register(router, ctx) {
                     if (ref.includes('{{evolutia_persona}}')) {
                         ref = ref.replace(/\{\{evolutia_persona\}\}/g, personaBlueprint);
                     } else if (personaBlueprint) {
-                        const anchor = ref.indexOf('\n\nLOREBOOKS');
-                        const msgAnchor = ref.indexOf('\n\nRECENT MESSAGES');
-                        const insertAt = anchor !== -1 ? anchor : (msgAnchor !== -1 ? msgAnchor : -1);
-                        if (insertAt !== -1) {
-                            ref = `${ref.slice(0, insertAt)}\n\n${personaBlueprint}${ref.slice(insertAt)}`;
-                        } else {
-                            ref = `${ref}\n\n${personaBlueprint}`;
-                        }
+                        ref = `${ref}\n\n${personaBlueprint}`;
                     }
                 }
                 messages[1].content = ref;
@@ -281,10 +294,21 @@ export function register(router, ctx) {
         }
 
         if (purpose === 'creator') {
-            let charId = null;
-            try {
-                charId = db.prepare('SELECT char_id FROM studio_sessions ORDER BY updated_at DESC LIMIT 1').get()?.char_id || null;
-            } catch { charId = null; }
+            const refText = String(req.messages[1]?.content || '');
+            const nameMatch = refText.match(/Name \[name\]:\n([^\n]+)/);
+            const refCharName = nameMatch ? nameMatch[1].trim() : null;
+            let charId = info?.charId || null;
+            if (!charId) {
+                try {
+                    const sessions = db.prepare('SELECT char_id FROM studio_sessions WHERE char_id IS NOT NULL ORDER BY updated_at DESC LIMIT 10').all();
+                    if (refCharName) {
+                        const matched = sessions.find(row => chars.getCharacter(db, row.char_id)?.card?.data?.name === refCharName);
+                        charId = matched?.char_id || sessions[0]?.char_id || null;
+                    } else {
+                        charId = sessions[0]?.char_id || null;
+                    }
+                } catch { charId = null; }
+            }
             const ev = charId ? evolutiaOf(db, charId) : null;
             const c = charId ? chars.getCharacter(db, charId) : null;
             const charName = c?.card?.data?.name || 'Character';
@@ -367,7 +391,6 @@ export function register(router, ctx) {
     // Alter Ego wrote each message, and any non-destructively stripped message texts (`stripped`).
     router.get('/chats/:chatId/state', ctx.requireChat, (req, res) => {
         const db = req.db, chatId = req.params.chatId;
-        ensureSavedPrompts(db);
         const s = sides(db, chatId, req.query.charId ? String(req.query.charId) : null);
         const h = history(db, chatId, null);
         const { bySeq: stripped } = computeStrippedMessages(db, s, h);
@@ -500,7 +523,7 @@ export function register(router, ctx) {
     });
 
     router.post('/seed-prompts', (req, res) => {
-        const seeded = ensureSavedPrompts(req.db);
+        const seeded = ensureSavedPrompts(req.db, { force: !!req.body?.force });
         res.json({ ok: true, seeded });
     });
 
