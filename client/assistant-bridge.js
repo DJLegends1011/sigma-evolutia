@@ -26,11 +26,40 @@ export function mountAssistantBridge(ctx, { getChatId, getCharId, onApplied } = 
         return `<div class="evo-prop-meta">${esc(label)}${esc(modeTag)}: ${list.map(k => `<code class="evo-kw-pill">${esc(k)}</code>`).join(' ')}</div>`;
     }
 
+    // `["user"]` / `["user", "char"]` (or a flags object) back to readable labels; [] when it names none.
+    function sourcesLabels(raw) {
+        if (Array.isArray(raw)) {
+            const names = raw.map(x => String(x ?? '').trim().toLowerCase()).filter(x => x === 'user' || x === 'char');
+            return [...new Set(names)];
+        }
+        if (raw && typeof raw === 'object' && !Array.isArray(raw) && ('user' in raw || 'char' in raw)) {
+            return [raw.user !== false && 'user', raw.char !== false && 'char'].filter(Boolean);
+        }
+        return [];
+    }
+
+    // a subtle `Reads: user` note for a trigger-sources value
+    function readsNoteHtml(raw) {
+        const labels = sourcesLabels(raw);
+        return labels.length && labels.length < 3
+            ? `<div class="evo-prop-meta evo-muted">Reads: ${esc(labels.join(', '))}</div>`
+            : '';
+    }
+
+    // the sources a Field op names: a trigger bucket's own, else the op's
+    function fieldSourcesRaw(f) {
+        for (const b of [f.activating, f.enabling, f.disabling]) {
+            if (b && typeof b === 'object' && !Array.isArray(b) && b.sources !== undefined) return b.sources;
+        }
+        return f.sources;
+    }
+
     function fieldTriggersHtml(f) {
         return [
             triggerPillsHtml('Activating', f.activating, f.activatingMode),
             triggerPillsHtml('Enabling', f.enabling, f.enablingMode),
             triggerPillsHtml('Disabling', f.disabling, f.disablingMode),
+            readsNoteHtml(fieldSourcesRaw(f)),
         ].filter(Boolean).join('');
     }
 
@@ -43,6 +72,10 @@ export function mountAssistantBridge(ctx, { getChatId, getCharId, onApplied } = 
             const fields = Array.isArray(op.fields) ? op.fields : [];
             const entryRaw = op.entry !== undefined ? op.entry : op.activating;
             const entryMode = op.entryMode ?? op.activatingMode;
+            const entryObj = entryRaw && typeof entryRaw === 'object' && !Array.isArray(entryRaw) ? entryRaw : null;
+            const entryConfirmRaw = op.entryConfirm !== undefined ? op.entryConfirm : entryObj?.confirm;
+            const exitConfirmRaw = op.exitConfirm !== undefined ? op.exitConfirm : op.exit?.confirm;
+            const entrySourcesRaw = op.entrySources !== undefined ? op.entrySources : entryObj?.sources;
             return `
                 <div class="evo-prop-item">
                     <div class="evo-prop-item-head">
@@ -53,7 +86,11 @@ export function mountAssistantBridge(ctx, { getChatId, getCharId, onApplied } = 
                         <span class="evo-token-pill">${fields.length} field${fields.length === 1 ? '' : 's'}</span>
                     </div>
                     ${triggerPillsHtml('Entry', entryRaw, entryMode)}
+                    ${readsNoteHtml(entrySourcesRaw)}
+                    ${triggerPillsHtml('Confirmed by', entryConfirmRaw)}
+                    ${triggerPillsHtml('Exit confirmed by', exitConfirmRaw)}
                     ${op.entryAction ? `<div class="evo-prop-meta">Entry Action: <em>${esc(op.entryAction)}</em></div>` : ''}
+                    ${op.exitAction ? `<div class="evo-prop-meta">Exit Action: <em>${esc(op.exitAction)}</em></div>` : ''}
                     ${fields.length ? `<div class="evo-prop-fields">${fields.map((f) => {
                         const trigHtml = fieldTriggersHtml(f);
                         return `

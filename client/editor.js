@@ -1,6 +1,6 @@
 // The Evolutia glassmorphic card editor, for a card (its details tab or chat window tab) or a persona
 // (Settings › Chat or chat window tab): switching Evolutia on, managing Alter Egos, and editing Dynamic Fields.
-import { blankField, blankAlterEgo, idFor, rebuildFromDescription } from './core/definition.js';
+import { blankField, blankAlterEgo, idFor, definitionFromDescription, rebuildFromDescription } from './core/definition.js';
 
 function estimateTokens(text = '') {
     const s = String(text ?? '').trim();
@@ -35,7 +35,7 @@ function avatarModeOf(avatar) {
 }
 
 // The editor of one owner's Field Definitions (a card's or a persona's, see owners.js).
-export function mountEditor(hostPane, owner, ctx, { bigEditor, onChanged, liveSide = null, onLiveSwitch = null } = {}) {
+export function mountEditor(hostPane, owner, ctx, { bigEditor, onChanged, liveSide = null, onLiveSwitch = null, otherOwner = null } = {}) {
     const { CoreAPI } = ctx;
     const esc = (s) => CoreAPI.escapeHtml(String(s ?? ''));
     // Isolate listeners on a fresh child node so host-reused panes (like #pane-ext.evolutia.evolutia
@@ -319,6 +319,7 @@ export function mountEditor(hostPane, owner, ctx, { bigEditor, onChanged, liveSi
                     <div class="evo-btn-row">
                         <button type="button" class="glass-btn glass-btn-sm" data-act="add-ego"><i class="fa-solid fa-plus"></i> Create</button>
                         <button type="button" class="glass-btn glass-btn-sm" data-act="dup-ego"><i class="fa-solid fa-clone"></i> Duplicate</button>
+                        ${otherOwner ? `<button type="button" class="glass-btn glass-btn-sm" data-act="copy-ego-other" title="Copy this Alter Ego to ${esc(otherOwner.noun === 'persona' ? `Persona (${otherOwner.name})` : `Character (${otherOwner.name})`)}"><i class="fa-solid fa-share-from-square"></i> Copy to ${otherOwner.noun === 'persona' ? 'Persona' : 'Character'}</button>` : ''}
                         <button type="button" class="glass-btn glass-btn-sm" data-act="rebuild" title="Split original ${esc(owner.descLabel)} into Fields"><i class="fa-solid fa-file-import"></i> Import Native Desc</button>
                         <button type="button" class="glass-btn glass-btn-sm evo-danger" data-act="del-ego" ${def.alterEgos.length <= 1 ? 'disabled' : ''}><i class="fa-solid fa-trash"></i> Delete Ego</button>
                     </div>
@@ -579,13 +580,50 @@ export function mountEditor(hostPane, owner, ctx, { bigEditor, onChanged, liveSi
             }
             case 'dup-ego': {
                 const copy = structuredClone(ego);
+                delete copy._uiAvatarMode;
                 copy.id = idFor(`${ego.name} copy`, new Set(def.alterEgos.map(x => x.id)));
                 copy.name = `${ego.name} (Copy)`;
+                const takenFields = new Set();
+                for (const f of copy.fields || []) {
+                    f.id = idFor(f.name || f.id || 'field', takenFields);
+                    takenFields.add(f.id);
+                }
                 if (egoIndex === 0 && owner.noun === 'persona') copy.disguise = true;
                 def.alterEgos.push(copy);
                 egoIndex = def.alterEgos.length - 1;
                 markDirty();
                 return rerender();
+            }
+            case 'copy-ego-other': {
+                if (!otherOwner) return;
+                try {
+                    const otherGot = await otherOwner.load();
+                    let targetDef = otherGot.definition;
+                    if (!targetDef) {
+                        targetDef = definitionFromDescription(otherGot.source || '');
+                    }
+                    const copy = structuredClone(ego);
+                    delete copy._uiAvatarMode;
+                    copy.id = idFor(ego.name || 'ego', new Set((targetDef.alterEgos || []).map(x => x.id)));
+                    const takenFields = new Set();
+                    for (const f of copy.fields || []) {
+                        f.id = idFor(f.name || f.id || 'field', takenFields);
+                        takenFields.add(f.id);
+                    }
+                    if (otherOwner.noun === 'persona' && owner.noun === 'card') {
+                        copy.disguise = true;
+                        if (!copy.promptName && ego.name) copy.promptName = ego.name;
+                        if (!copy.avatar && owner.charId) copy.avatar = { character: owner.charId };
+                    }
+                    targetDef.alterEgos.push(copy);
+                    await otherOwner.saveDefinition(targetDef);
+                    const destLabel = otherOwner.noun === 'persona' ? `Persona (${otherOwner.name})` : `Character (${otherOwner.name})`;
+                    CoreAPI.showToast(`Copied "${ego.name}" to ${destLabel}`, 'success');
+                    onChanged?.();
+                } catch (err) {
+                    CoreAPI.showToast(`Could not copy Alter Ego: ${err.message}`, 'error');
+                }
+                return;
             }
             case 'del-ego':
                 if (def.alterEgos.length <= 1) return;

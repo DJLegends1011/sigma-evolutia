@@ -96,3 +96,7 @@ An optional flag on a Field or Alter Ego that removes matched trigger keywords f
 
 **Assistant Proposals (`cl-evolutia-edits`)**:
 Fenced JSON blocks emitted by Project Σ's Chat Assistant or Creator Studio when asked to create, split, or distill Evolutia Alter Egos, Fields, and Triggers, rendered in the Assistant panel as interactive review cards with 1-click Apply. On `upsert-ego`, `"entry"` sets the Alter Ego's Entry Triggers (legacy `"activating"` is also accepted); on Fields (`upsert-field` and nested `fields` in `upsert-ego`), `"activating"`, `"enabling"`, and `"disabling"` set the Field's Activating, Enabling, and Disabling Triggers.
+_Avoid_: edit block, patch JSON
+
+**Proposal Sources / Confirms (`sources`, `entrySources`, `entryConfirm`, `exitConfirm`)**:
+The op keys that steer where a proposal's triggers read and when its Actions count as done. On a Field, `"sources": ["user", "char"]` (or a `sources` array inside one trigger object, which wins) sets the Trigger Source for all its triggers. On an Alter Ego, `"entrySources"` (or `sources` inside the `"entry"` object) sets the Entry Trigger's source, `"entryConfirm"` / `"exitConfirm"` (or `confirm` inside `entry`) set the Confirm Keywords for the Entry / Exit Action. `"stripTriggers"` (boolean) works on both `upsert-ego` and `upsert-field`.

@@ -275,10 +275,15 @@ test('assistant-apply creates/updates Alter Egos and Fields on Character and Per
                 promptName: 'Ollie',
                 disguise: true,
                 entry: ['become ollie'],
+                entrySources: ['user'],
+                entryConfirm: ['Ollie'],
+                exitConfirm: ['Demetri'],
+                stripTriggers: true,
                 fields: [
                     {
                         name: 'Intimate',
                         startsOn: true,
+                        sources: ['user'],
                         activating: ['kiss', 'undress'],
                         content: 'Energetic and vocal.',
                     },
@@ -300,9 +305,14 @@ test('assistant-apply creates/updates Alter Egos and Fields on Character and Per
     assert.deepEqual(bambiEgo.entry.keywords, ['bambi disguise'], 'old "activating" on ego sets Entry Triggers');
     const ollieEgo = personaEvo.alterEgos.find(e => e.name === 'Ollie');
     assert.deepEqual(ollieEgo.entry.keywords, ['become ollie'], '"entry" on ego sets Entry Triggers');
+    assert.deepEqual(ollieEgo.entrySources, { user: true, char: false }, '"entrySources" on ego sets user-only source');
+    assert.deepEqual(ollieEgo.entryConfirm.keywords, ['Ollie'], '"entryConfirm" on ego sets Confirm keywords');
+    assert.deepEqual(ollieEgo.exitConfirm.keywords, ['Demetri'], '"exitConfirm" on ego sets Exit Confirm keywords');
+    assert.equal(ollieEgo.stripTriggers, true, '"stripTriggers" on ego is saved');
     const intimateField = ollieEgo.fields.find(f => f.name === 'Intimate');
     assert.deepEqual(intimateField.activating.keywords, ['kiss', 'undress'], 'nested Field "activating" sets Activating Triggers');
     assert.deepEqual(intimateField.enabling.keywords, [], 'nested Field has no Enabling Triggers');
+    assert.deepEqual(intimateField.sources, { user: true, char: false }, 'nested Field "sources" sets user-only source');
 
     const state = (await evolutia(`/chats/${chatId}/state?charId=${charId}`)).body;
     assert.equal(state.on, true);
@@ -318,6 +328,9 @@ test('assistant-apply creates/updates Alter Egos and Fields on Character and Per
     // and calling /seed-prompts again must NOT resurrect the deleted prompt.
     const doc1 = (await me.api('/store/assistant-prompts')).body;
     assert.ok(doc1.prompts.some(p => p.id === 'evo-distill-ego'));
+    assert.ok(doc1.prompts.some(p => p.id === 'evo-seed-distill-ego-dshad'), 'DShad template starter prompt is seeded');
+    const distillPrompt = doc1.prompts.find(p => p.id === 'evo-distill-ego');
+    assert.match(distillPrompt.text, /entryConfirm/, 'updated Distill Alter Ego prompt mentions entryConfirm');
     const filtered = doc1.prompts.filter(p => p.id !== 'evo-distill-ego');
     await me.api('/store/assistant-prompts', 'PUT', { version: 1, prompts: filtered });
 
@@ -338,7 +351,7 @@ test('uploading a custom avatar returns an upload avatar descriptor and client p
     try {
         await page.boot();
         assert.ok(globalThis.window?.__SIGMA_EVOLUTIA__, 'window.__SIGMA_EVOLUTIA__ is exposed');
-        assert.equal(globalThis.window.__SIGMA_EVOLUTIA__.version, '0.3.6');
+        assert.equal(globalThis.window.__SIGMA_EVOLUTIA__.version, '0.3.7');
     } finally {
         await page.close();
     }

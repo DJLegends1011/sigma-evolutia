@@ -141,17 +141,20 @@ export function mountPanel(body, ctx, { bigEditor, identity } = {}) {
             return;
         }
 
+        const charId = character?.id || s?.charId;
+        const charObj = character || (charId ? (CoreAPI.getCharacterById(charId) || await CoreAPI.ensureCharacterById(charId)) : null);
+        const pMeta = s?.persona || s?.personaMeta;
+        const cOwner = charObj ? Object.assign(cardOwner(charObj, ctx), { charId: charObj.id }) : null;
+        const pOwner = pMeta?.id ? personaOwner({ id: pMeta.id, name: pMeta.name || 'Persona' }, ctx) : null;
+
         if (activeTab === 'char') {
-            const charId = character?.id || s?.charId;
-            const charObj = character || (charId ? (CoreAPI.getCharacterById(charId) || await CoreAPI.ensureCharacterById(charId)) : null);
-            if (!charObj) {
+            if (!cOwner) {
                 pane.innerHTML = '<div class="evo-card"><span class="evo-muted">No character found for this chat.</span></div>';
                 return;
             }
-            const owner = cardOwner(charObj, ctx);
-            owner.charId = charObj.id;
-            mountEditor(pane, owner, ctx, {
+            mountEditor(pane, cOwner, ctx, {
                 bigEditor,
+                otherOwner: pOwner,
                 liveSide: s?.on ? s : null,
                 onLiveSwitch: (sw) => manual(sw),
                 onChanged: async () => { await follower.reload(); identity?.refreshSoon(); },
@@ -160,13 +163,13 @@ export function mountPanel(body, ctx, { bigEditor, identity } = {}) {
         }
 
         if (activeTab === 'persona') {
-            const pMeta = s?.persona || s?.personaMeta;
-            if (!pMeta?.id) {
+            if (!pOwner) {
                 pane.innerHTML = '<div class="evo-card"><span class="evo-muted">No active persona found. Select or create a persona in Settings › Chat first.</span></div>';
                 return;
             }
-            mountEditor(pane, personaOwner({ id: pMeta.id, name: pMeta.name || 'Persona' }, ctx), ctx, {
+            mountEditor(pane, pOwner, ctx, {
                 bigEditor,
+                otherOwner: cOwner,
                 liveSide: s?.persona || null,
                 onLiveSwitch: (sw) => manual({ ...sw, side: 'persona' }),
                 onChanged: async () => { await follower.reload(); identity?.refreshSoon(); },

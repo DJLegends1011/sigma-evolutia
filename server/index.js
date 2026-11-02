@@ -129,16 +129,22 @@ export function register(router, ctx) {
     // Non-destructively seed Evolutia's Saved Prompts into `assistant-prompts` and `creator-studio-prompts` once per user.
     // Keeps the marker in Evolutia's own per-user file folder (`ctx.files.user(req)`) so when Sigma's `ai-panel.js`
     // re-saves `{ version, prompts }`, the marker is never lost and deleted prompts never come back.
+    // Version 2 refreshes the built-in `evo-distill-ego` text and adds `evo-seed-distill-ego-dshad`; a user's own
+    // prompts (and deletions of built-ins) are always kept.
+    const SEED_VERSION = 2;
     function ensureSavedPrompts(req, { force = false } = {}) {
         try {
             const db = req.db;
             const userFiles = ctx.files.user(req);
             const marker = userFiles.readJson('seeded-prompts.json', null);
-            if (marker?.seeded && !force) return false;
+            const fromVersion = Number(marker?.version) || (marker?.seeded ? 1 : 0);
+            if (fromVersion >= SEED_VERSION && !force) return false;
 
             const hasTable = db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'app_store'").get();
             if (!hasTable) return false;
-            const mergeDoc = (key, builtinStarters, evoPrompts) => {
+            // a versioned upgrade (or a forced re-seed) refreshes these built-ins' text where they still sit
+            const refreshing = fromVersion < SEED_VERSION || force;
+            const mergeDoc = (key, builtinStarters, evoPrompts, refreshIds = []) => {
                 const row = db.prepare('SELECT value FROM app_store WHERE key = ?').get(key);
                 let parsed = null;
                 if (row?.value) {
@@ -148,7 +154,12 @@ export function register(router, ctx) {
                     ? [...parsed.prompts]
                     : [...builtinStarters];
                 for (const ep of evoPrompts) {
-                    if (!list.some(x => x.id === ep.id || x.label === ep.label)) {
+                    const at = list.findIndex(x => x.id === ep.id);
+                    if (at !== -1) {
+                        if (refreshing && refreshIds.includes(ep.id)) list[at] = { ...ep };
+                        continue;
+                    }
+                    if (!list.some(x => x.label === ep.label)) {
                         list.push({ ...ep });
                     }
                 }
@@ -157,9 +168,10 @@ export function register(router, ctx) {
                     .run(key, JSON.stringify({ version: parsed?.version || 1, prompts: list }), Date.now());
                 return true;
             };
-            mergeDoc('assistant-prompts', BUILTIN_ASSISTANT_STARTERS, EVOLUTIA_ASSISTANT_PROMPTS);
+            const assistantRefresh = refreshing ? ['evo-distill-ego'] : [];
+            mergeDoc('assistant-prompts', BUILTIN_ASSISTANT_STARTERS, EVOLUTIA_ASSISTANT_PROMPTS, assistantRefresh);
             mergeDoc('creator-studio-prompts', BUILTIN_CREATOR_STARTERS, EVOLUTIA_CREATOR_PROMPTS);
-            userFiles.writeJson('seeded-prompts.json', { seeded: true, at: Date.now() });
+            userFiles.writeJson('seeded-prompts.json', { seeded: true, version: SEED_VERSION, at: Date.now() });
             return true;
         } catch {
             return false;
@@ -283,7 +295,30 @@ export function register(router, ctx) {
     ctx.hooks.add('llm.request', (req, info) => {
         const db = info?.db;
         const purpose = info?.purpose;
-        if (!db || !Array.isArray(req?.messages) || req.messages.length < 2) return req;
+        if (!db || !Array.isArray(req?.messages)) return req;
+
+        // Extension calls (Sigma's bundled next-beat, auto-tagger, ...): expand a literal {{evolutia}} /
+        // {{evolutia_persona}} the same way the main chat's macros would, strictly read-only. The chat is the
+        // one most recently written to (the call's own spec names no chat the hook ever sees).
+        if (purpose === 'extension') {
+            const wants = (t) => typeof t === 'string' && (t.includes('{{evolutia}}') || t.includes('{{evolutia_persona}}'));
+            if (!req.messages.some(m => wants(m?.content)) && !wants(req.system)) return req;
+            let chatId = info?.chatId || null;
+            if (!chatId) {
+                try { chatId = db.prepare('SELECT id FROM chats ORDER BY updated_at DESC LIMIT 1').get()?.id || null; } catch { chatId = null; }
+            }
+            if (!chatId) return req;
+            const now = promptNow(db, chatId, null, null) || { evolutia: '', persona: '' };
+            const expandText = (t) => String(t)
+                .split('{{evolutia}}').join(now.evolutia)
+                .split('{{evolutia_persona}}').join(now.persona);
+            const messages = req.messages.map(m => wants(m?.content) ? { ...m, content: expandText(m.content) } : m);
+            const out = { ...req, messages };
+            if (wants(req.system)) out.system = expandText(req.system);
+            return out;
+        }
+
+        if (req.messages.length < 2) return req;
 
         if (purpose === 'assistant') {
             const refText = String(req.messages[1]?.content || '');

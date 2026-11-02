@@ -210,7 +210,7 @@ export default {
 
         if (typeof window !== 'undefined') {
             window.__SIGMA_EVOLUTIA__ = Object.freeze({
-                version: '0.3.6',
+                version: '0.3.7',
                 getState: (opts = {}) => ctx.commands.run('evolutia.get-state', opts),
                 switchEgo: (opts = {}) => ctx.commands.run('evolutia.switch-ego', opts),
                 switchField: (opts = {}) => ctx.commands.run('evolutia.switch-field', opts),
