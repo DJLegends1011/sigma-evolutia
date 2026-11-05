@@ -141,15 +141,11 @@ export function register(router, ctx) {
             const fromVersion = Number(marker?.version) || (marker?.seeded ? 1 : 0);
             if (fromVersion >= SEED_VERSION && !force) return false;
 
-            const hasTable = db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'app_store'").get();
-            if (!hasTable) return false;
+            const docs = ctx.stores.documents;
+            if (!docs?.readDocument || !docs?.writeDocument) return false;
             // First installs and explicit re-seeds add missing prompts. Upgrades add only new IDs.
             const mergeDoc = (key, builtinStarters, evoPrompts) => {
-                const row = db.prepare('SELECT value FROM app_store WHERE key = ?').get(key);
-                let parsed = null;
-                if (row?.value) {
-                    try { parsed = JSON.parse(row.value); } catch { parsed = null; }
-                }
+                const parsed = docs.readDocument(db, key, null);
                 const list = (Array.isArray(parsed?.prompts)
                     ? [...parsed.prompts]
                     : [...builtinStarters]).filter(p => key !== 'assistant-prompts'
@@ -168,9 +164,7 @@ export function register(router, ctx) {
                         list.push(saved);
                     }
                 }
-                db.prepare(`INSERT INTO app_store (key, value, updated_at) VALUES (?, ?, ?)
-                    ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`)
-                    .run(key, JSON.stringify({ version: parsed?.version || 1, prompts: list }), Date.now());
+                docs.writeDocument(db, key, { version: parsed?.version || 1, prompts: list });
                 return true;
             };
             mergeDoc('assistant-prompts', BUILTIN_ASSISTANT_STARTERS, EVOLUTIA_ASSISTANT_PROMPTS);
