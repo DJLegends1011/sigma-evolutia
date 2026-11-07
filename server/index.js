@@ -370,6 +370,7 @@ export function register(router, ctx) {
         }
 
         if (purpose === 'creator') {
+            if (!info?.sessionId) return req;
             const charId = info?.charId || null;
             const ev = charId ? evolutiaOf(db, charId) : null;
             const c = charId ? chars.getCharacter(db, charId) : null;
