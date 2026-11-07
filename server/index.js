@@ -318,26 +318,7 @@ export function register(router, ctx) {
         if (req.messages.length < 2) return req;
 
         if (purpose === 'assistant') {
-            const refText = String(req.messages[1]?.content || '');
-            const charMatch = refText.match(/CHARACTER:\s*([^\n]+)/);
-            const refCharName = charMatch ? charMatch[1].trim() : null;
-            let chatId = info?.chatId || null;
-            if (!chatId) {
-                try {
-                    const sessions = db.prepare(`
-                        SELECT a.chat_id, c.char_id
-                        FROM assistant_sessions a
-                        JOIN chats c ON c.id = a.chat_id
-                        ORDER BY a.updated_at DESC LIMIT 10
-                    `).all();
-                    if (refCharName) {
-                        const matched = sessions.find(row => chars.getCharacter(db, row.char_id)?.card?.data?.name === refCharName);
-                        chatId = matched?.chat_id || sessions[0]?.chat_id || null;
-                    } else {
-                        chatId = sessions[0]?.chat_id || null;
-                    }
-                } catch { chatId = null; }
-            }
+            const chatId = info?.chatId || null;
             if (!chatId) return req;
 
             const s = sides(db, chatId, null);
@@ -389,21 +370,7 @@ export function register(router, ctx) {
         }
 
         if (purpose === 'creator') {
-            const refText = String(req.messages[1]?.content || '');
-            const nameMatch = refText.match(/Name \[name\]:\n([^\n]+)/);
-            const refCharName = nameMatch ? nameMatch[1].trim() : null;
-            let charId = info?.charId || null;
-            if (!charId) {
-                try {
-                    const sessions = db.prepare('SELECT char_id FROM studio_sessions WHERE char_id IS NOT NULL ORDER BY updated_at DESC LIMIT 10').all();
-                    if (refCharName) {
-                        const matched = sessions.find(row => chars.getCharacter(db, row.char_id)?.card?.data?.name === refCharName);
-                        charId = matched?.char_id || sessions[0]?.char_id || null;
-                    } else {
-                        charId = sessions[0]?.char_id || null;
-                    }
-                } catch { charId = null; }
-            }
+            const charId = info?.charId || null;
             const ev = charId ? evolutiaOf(db, charId) : null;
             const c = charId ? chars.getCharacter(db, charId) : null;
             const charName = c?.card?.data?.name || 'Character';
