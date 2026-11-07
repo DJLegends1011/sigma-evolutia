@@ -8,9 +8,10 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const kitPath = [
+    process.env.SIGMA_DIR && path.resolve(process.env.SIGMA_DIR, 'tools/extension-kit/index.mjs'),
     path.resolve(here, '../../../../ProjectSigma-main/tools/extension-kit/index.mjs'),
     path.resolve(here, '../../../../../ProjectSigma-main/tools/extension-kit/index.mjs'),
-].find(p => fs.existsSync(p));
+].filter(Boolean).find(p => fs.existsSync(p));
 const { startSigma } = await import(pathToFileURL(kitPath).href);
 const sigma = await startSigma({ prefix: 'evolutia-test', extensions: [path.join(here, '..')] });
 after(() => sigma.close());
@@ -420,7 +421,7 @@ test('uploading a custom avatar returns an upload avatar descriptor and client p
     try {
         await page.boot();
         assert.ok(globalThis.window?.__SIGMA_EVOLUTIA__, 'window.__SIGMA_EVOLUTIA__ is exposed');
-        assert.equal(globalThis.window.__SIGMA_EVOLUTIA__.version, '0.3.8');
+        assert.equal(globalThis.window.__SIGMA_EVOLUTIA__.version, '0.3.9');
     } finally {
         await page.close();
     }
