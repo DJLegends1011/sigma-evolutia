@@ -46,6 +46,8 @@ export const migrations = [
 ];
 
 export function register(router, ctx) {
+    // the account's newest Creator Studio generation (session and character), for an apply that cannot name its session
+    const lastStudio = new Map();
     const chars = ctx.stores.characters;
     ctx.query.projection({ key: 'on', table: CARDS, column: 'enabled' });
     const evolutiaOf = (db, charId) => chars.getCharacter(db, charId)?.card.data.extensions?.evolutia || null;
@@ -372,6 +374,7 @@ export function register(router, ctx) {
         if (purpose === 'creator') {
             if (!info?.sessionId) return req;
             const charId = info?.charId || null;
+            lastStudio.set(info.user ?? '', { sessionId: info.sessionId, charId });
             const ev = charId ? evolutiaOf(db, charId) : null;
             const c = charId ? chars.getCharacter(db, charId) : null;
             const charName = c?.card?.data?.name || 'Character';
@@ -512,17 +515,29 @@ export function register(router, ctx) {
     // Apply `cl-evolutia-edits` proposals from the Chat Assistant or Creator Studio
     router.post('/assistant-apply', (req, res) => {
         const db = req.db;
-        const { chatId = null, charId = null, personaId = null, ops = [] } = req.body || {};
+        const body = req.body || {};
+        const { personaId = null, ops = [] } = body;
         if (!Array.isArray(ops) || !ops.length) {
             return res.status(400).json({ error: 'ops array is required' });
         }
 
-        const resolvedCharId = charId
-            || (chatId ? db.prepare('SELECT char_id FROM chats WHERE id = ?').get(chatId)?.char_id : null)
-            || (() => {
-                try { return db.prepare('SELECT char_id FROM studio_sessions ORDER BY updated_at DESC LIMIT 1').get()?.char_id || null; }
-                catch { return null; }
-            })();
+        // Creator Studio: the character is the studio session's own (an unbound draft has none);
+        // the chat and the page's last-chat character play no part
+        const fromStudio = body.surface === 'creator';
+        const chatId = fromStudio ? null : (body.chatId || null);
+        let resolvedCharId;
+        if (fromStudio) {
+            const sid = typeof body.studioSessionId === 'string' && body.studioSessionId ? body.studioSessionId : null;
+            const last = lastStudio.get(req.userHandle ?? '');
+            const session = sid ? ctx.stores.studio.getSession(db, sid) : null;
+            resolvedCharId = session ? (session.charId || null) : (last?.charId || null);
+            const wantsChar = ops.some(o => o && (o.side || 'char') === 'char');
+            if (wantsChar && !resolvedCharId) {
+                return res.status(400).json({ error: 'This Creator Studio conversation is not tied to a saved character yet. Save the character first, or set "side": "persona".' });
+            }
+        } else {
+            resolvedCharId = body.charId || (chatId ? db.prepare('SELECT char_id FROM chats WHERE id = ?').get(chatId)?.char_id : null) || null;
+        }
         const resolvedPersona = personaId
             ? ctx.stores.personas.getPersona(db, personaId)
             : chatPersona(db, chatId);

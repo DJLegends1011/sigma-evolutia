@@ -228,11 +228,12 @@ export function mountAssistantBridge(ctx, { getChatId, getCharId, onApplied } = 
                 }
                 btn.disabled = true;
                 try {
-                    const res = await ctx.server.call('/assistant-apply', 'POST', {
-                        chatId: getChatId?.() || null,
-                        charId: getCharId?.() || null,
-                        ops,
-                    });
+                    // a proposal in Creator Studio is about the studio's character, never the last chat's:
+                    // the server reads it from the studio session shown in the studio's own picker
+                    const inStudio = !!block.closest('#ccsBody');
+                    const res = await ctx.server.call('/assistant-apply', 'POST', inStudio
+                        ? { surface: 'creator', studioSessionId: document.getElementById('ccsSessionSel')?.value || null, ops }
+                        : { chatId: getChatId?.() || null, charId: getCharId?.() || null, ops });
                     applied = true;
                     editing = false;
                     renderCard();

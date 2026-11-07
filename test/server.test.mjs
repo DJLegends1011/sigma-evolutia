@@ -421,10 +421,33 @@ test('uploading a custom avatar returns an upload avatar descriptor and client p
     try {
         await page.boot();
         assert.ok(globalThis.window?.__SIGMA_EVOLUTIA__, 'window.__SIGMA_EVOLUTIA__ is exposed');
-        assert.equal(globalThis.window.__SIGMA_EVOLUTIA__.version, '0.3.9');
+        assert.equal(globalThis.window.__SIGMA_EVOLUTIA__.version, '0.3.10');
     } finally {
         await page.close();
     }
 });
 
 
+
+test('a Creator Studio apply lands on the studio session\'s character, never the last chat\'s', async () => {
+    await demetri('A laid-back student.');
+    const { id: kaelId, chatId } = await kael(null);          // the "last chat" (Kael)
+    const { id: miraId } = await me.importCard({ name: 'Mira', description: 'A sharp-eyed archivist.', first_mes: 'Hm?' });
+    const studio = await me.api('/creator/sessions', 'POST', { charId: miraId, name: 'Mira studio' });
+    assert.ok(studio.body?.id, `studio session: ${studio.status} ${JSON.stringify(studio.body)}`);
+    const op = { op: 'upsert-field', side: 'char', ego: 'main', name: 'Habit', startsOn: true, content: 'Hums while filing.' };
+
+    const r = await evolutia('/assistant-apply', 'POST', { surface: 'creator', studioSessionId: studio.body.id, chatId, ops: [op] });
+    assert.equal(r.status, 200, JSON.stringify(r.body));
+    assert.equal(r.body.charId, miraId);
+    const mira = (await me.api(`/characters/${miraId}`)).body.card.data.extensions?.evolutia;
+    assert.ok(JSON.stringify(mira?.definition).includes('Hums while filing.'));
+    const kaelCard = (await me.api(`/characters/${kaelId}`)).body.card.data;
+    assert.ok(kaelCard.name === 'Kael' && !JSON.stringify(kaelCard).includes('Hums while filing.'), 'the last chat\'s character is untouched');
+
+    // an unbound draft session refuses a character op instead of guessing
+    const draft = await me.api('/creator/sessions', 'POST', { name: 'loose draft' });
+    const refused = await evolutia('/assistant-apply', 'POST', { surface: 'creator', studioSessionId: draft.body.id, ops: [op] });
+    assert.equal(refused.status, 400);
+    assert.match(refused.body.error, /not tied to a saved character/);
+});
