@@ -207,25 +207,11 @@ export default {
         };
         ctx.commands.register('after-sync', afterSyncHandler, { title: 'Evolutia: Rebuild Cards After Sync' });
         try { ctx.commands.register('afterSync', afterSyncHandler, { title: 'Evolutia: Rebuild Cards After Sync' }); } catch { /* host requires lowercase */ }
-
-        if (typeof window !== 'undefined') {
-            window.__SIGMA_EVOLUTIA__ = Object.freeze({
-                version: '0.3.10',
-                getState: (opts = {}) => ctx.commands.run('evolutia.get-state', opts),
-                switchEgo: (opts = {}) => ctx.commands.run('evolutia.switch-ego', opts),
-                switchField: (opts = {}) => ctx.commands.run('evolutia.switch-field', opts),
-                openQuickSwitcher: (opts = {}) => openSwitchEgoDialog(opts),
-                afterSync: () => afterSyncHandler(),
-            });
-        }
     },
 
-    // the host undoes what went through ctx; the Settings block and window handle are Evolutia's own
+    // the host undoes what went through ctx; the Settings block is Evolutia's own
     dispose() {
         unmountPersonaSettings();
         unmountAssistantBridge();
-        if (typeof window !== 'undefined' && window.__SIGMA_EVOLUTIA__) {
-            delete window.__SIGMA_EVOLUTIA__;
-        }
     },
 };
