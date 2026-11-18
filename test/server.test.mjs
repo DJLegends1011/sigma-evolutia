@@ -411,7 +411,7 @@ test('extension requests use latest message time rather than latest chat edit', 
     assert.equal(request.messages[0].content, '{{evolutia}}', 'request stays immutable');
 });
 
-test('uploading a custom avatar returns an upload avatar descriptor and client page boots cleanly with __SIGMA_EVOLUTIA__', async () => {
+test('uploading a custom avatar returns an upload avatar descriptor and client page boots cleanly', async () => {
     const tinyPng = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=';
     const up = await evolutia('/avatars', 'POST', { filename: 'bambi.png', dataUrl: tinyPng });
     assert.equal(up.status, 200);
@@ -420,8 +420,9 @@ test('uploading a custom avatar returns an upload avatar descriptor and client p
     const page = await me.page();
     try {
         await page.boot();
-        assert.ok(globalThis.window?.__SIGMA_EVOLUTIA__, 'window.__SIGMA_EVOLUTIA__ is exposed');
-        assert.equal(globalThis.window.__SIGMA_EVOLUTIA__.version, '0.3.10');
+        for (const id of ['evolutia.get-state', 'evolutia.switch-ego', 'evolutia.switch-field']) {
+            assert.ok(page.registry.hasCommand(id), `${id} is registered`);
+        }
     } finally {
         await page.close();
     }
